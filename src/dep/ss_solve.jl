@@ -2,6 +2,31 @@
     HOUSEHOLDS' PROBLEM
 ===========================================================================#
 
+# Error in optimality conditions
+function err_euler(
+    c::Vector{<:Real}, pref::Preferencias, Q::AbstractMatrix, r′::Real;
+    c′::Vector{<:Real}=c
+)
+    @unpack β, u′ = pref
+    return u′.(c) - β*(1+r′) * Q' * u′.(c′)
+end
+function err_euler(eco::Economía)
+    @unpack hh, pr, Q = eco
+    @unpack pref, G = hh
+    return err_euler(G.c, pref, Q, pr.r)
+end
+function err_budget(G::PolicyFunctions, prices::Prices, S::StateVariables)
+    @unpack c, a′ = G
+    @unpack r, w = prices
+    @unpack a, z = S
+    return (1+r)*a + w*z - c - a′
+end
+function err_budget(eco::Economía)
+    @unpack hh, pr = eco
+    @unpack G, S = hh
+    return err_budget(G, pr, S)
+end
+
 # Solving the optimality conditions for one variable
 function c_euler(pref::Preferencias, c′::Vector{<:Real}, Π_trans::Matrix{<:Real}, r::Real, N::Integer, N_a::Integer)
     @unpack β, u′, inv_u′ = pref
@@ -205,4 +230,21 @@ function steady(hlds::Households, prod::Firms, her::Herramientas, cfg::Configura
     solve!(cfg.cfg_r, r_0, K_market!, eco, her, cfg)
     # Return the steady state economy
     return eco
+end
+
+
+
+#===========================================================================
+    IDENTIFICATION OF AGENTS
+===========================================================================#
+
+# Borrowing contrained agents
+function get_borrowing_constrained(a′, min_a, tol::Real)
+    return a′ .<= min_a + tol
+end
+function get_borrowing_constrained(
+    eco::Economía, her::Herramientas;
+    tol=(her.grid_a.nodes[2]-her.grid_a.nodes[1])/2
+)
+    return get_borrowing_constrained(eco.hh.G.a′, her.grid_a.min, tol)
 end
