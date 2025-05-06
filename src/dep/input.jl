@@ -41,14 +41,26 @@ function read_parameters(filepath; comment='#', delim=',')
     end
     return NamedTuple(Symbol.(getindex.(raw, 1)) .=> eval.(Meta.parse.(getindex.(raw, 2))))
 end
+
+
+
+#===========================================================================
+    BUILD MAIN STRUCTURES FROM PARAMETERS
+===========================================================================#
+
 function build_model(
     filepath = BASE_FOLDER * "/parameters/default_parameters.csv";
-    kwargs... # keyword arguments
+    save_pars::Bool=true,   # by default, save parameters in file
+    outputpath = BASE_FOLDER * "/parameters/latest_simulation.csv",
+    kwargs...
 )
+    println(filepath)
     # Read parameters
     pars_file = read_parameters(filepath)
     pars_code = NamedTuple(kwargs)
     pars = merge(pars_file, pars_code)  # merge parameters, prioritising those introduced in the command line
+    # Write parameters in file
+    save_pars && write_parameters(outputpath, pars; delim=',')
     # Grids and processes
     process_z = get_object(pars, "_z"; typesubstr="Suffix")
     grid_a = get_object(pars, "_a"; typesubstr="Suffix")
@@ -58,9 +70,9 @@ function build_model(
     cfg_distr = get_object(pars, "cfg_distr_")
     # Build structures
     her = Herramientas(; process_z, grid_a)
-    hlds = Households(her; getindex(pars, get_household_parameters())...)
-    prod = Firms(; getindex(pars, get_firm_parameters())...)
+    hh = Households(her; getindex(pars, get_household_parameters())...)
+    fm = Firms(; getindex(pars, get_firm_parameters())...)
     cfg = Configuration(cfg_r, cfg_hh, cfg_distr)
     # Return structures
-    return (hlds, prod, her, cfg)
+    return (; hh, fm, her, cfg)
 end

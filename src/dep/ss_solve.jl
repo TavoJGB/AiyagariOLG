@@ -234,9 +234,9 @@ end
     STEADY STATE
 ===========================================================================#
 
-function steady(hlds::Households, prod::Firms, her::Herramientas, cfg::Configuration; r_0)
+function steady(hh::Households, fm::Firms, her::Herramientas, cfg::Configuration; r_0)
     # Initialise economy
-    eco = Economía(r_0, hlds, prod)
+    eco = Economía(r_0, hh, fm)
     # General equilibrium
     solve!(cfg.cfg_r, r_0, K_market!, eco, her, cfg)
     # Return the steady state economy
