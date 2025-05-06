@@ -258,3 +258,16 @@ function rouwenhorst(npts, ρ, σ)
     Π = rouwenmat(npts, q, q)
     return points, Π
 end
+
+
+
+#===========================================================================
+    NAMED TUPLES
+===========================================================================#
+
+function subset_namedtuple(nt::NamedTuple, prefix::String)
+    subset = nt[filter(key -> startswith(String(key), prefix), keys(nt))]
+    newkeys = Symbol.(replace.(String.(keys(subset)), prefix => ""))
+    newvals = values(subset)
+    return NamedTuple(newkeys .=> newvals)
+end

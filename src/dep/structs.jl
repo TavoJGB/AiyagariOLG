@@ -10,24 +10,26 @@ struct POWM <: SolverType end
 
 # Parameters of the solvers
 abstract type SolverParameters end
-struct BasicSolverParameters <: SolverParameters
+@with_kw struct BasicSolverParameters <: SolverParameters
     objective::String
     tol::Real
     maxit::Int
 end
-SolverParameters(::SolverType, args...) = BasicSolverParameters(args...)
-struct LinearJumpsParameters <: SolverParameters
+SolverParameters(::SolverType; kwargs...) = BasicSolverParameters(; kwargs...)
+get_solver_parameters(::SolverType) = [:objective, :tol, :maxit]
+@with_kw struct LinearJumpsParameters <: SolverParameters
     objective::String
     tol::Real
     wgt::Real
     maxit::Int
 end
-SolverParameters(::LinearJumps, args...) = LinearJumpsParameters(args...)
+SolverParameters(::LinearJumps; kwargs...) = LinearJumpsParameters(; kwargs...)
+get_solver_parameters(::LinearJumps) = [:objective, :tol, :wgt, :maxit]
 
 # Main solver structure
 struct Solver{Ts <: SolverType}
     p::SolverParameters
-    Solver(type::Ts, args...) where {Ts <: SolverType} = new{Ts}(SolverParameters(type, args...))
+    Solver(type::Ts; kwargs...) where {Ts <: SolverType} = new{Ts}(SolverParameters(type; kwargs...))
 end
 
 
@@ -37,7 +39,6 @@ end
 ===========================================================================#
 
 struct Configuration
-    pars_grids::NamedTuple
     cfg_r::Solver
     cfg_hh::Solver
     cfg_distr::Solver
@@ -54,31 +55,32 @@ abstract type AbstractGrid end
 struct BasicGrid <: AbstractGrid
     N::Int
     nodes::Vector{<:Real}
-    function BasicGrid(nodes::Vector{<:Real})
-        return new(length(nodes), nodes)
-    end
+    BasicGrid(nodes) = new(length(nodes), nodes) 
 end
+get_BasicGrid_parameters() = [:nodes]
 struct LinearGrid <: AbstractGrid
     N::Int
     min::Real
     max::Real
     nodes::Vector{<:Real}
-    function LinearGrid(N::Int, min::Real, max::Real)
-        nodes = range(min, max, length=N) |> collect
-        return new(N, min, max, nodes)
-    end
 end
-struct CurvedGrid <: AbstractGrid
+function _LinearGrid(N::Int, min::Real, max::Real)
+    nodes = range(min, max, length=N) |> collect
+    return LinearGrid(N, min, max, nodes)
+end
+get_LinearGrid_parameters() = [:N, :min, :max]
+@with_kw struct CurvedGrid <: AbstractGrid
     N::Int
     curv::Real
     min::Real
     max::Real
     nodes::Vector{<:Real}
-    function CurvedGrid(N::Int, curv::Real, min::Real, max::Real)
-        nodes = min .+ (max - min) .* (range(0.0, 1.0, length=N) .^ (1/curv))
-        return new(N, curv, min, max, nodes)
-    end
 end
+function _CurvedGrid(; N::Int, curv::Real, min::Real, max::Real)
+    nodes = min .+ (max - min) .* (range(0.0, 1.0, length=N) .^ (1/curv))
+    return CurvedGrid(N, curv, min, max, nodes)
+end
+get_CurvedGrid_parameters() = [:N, :curv, :min, :max]
 
 # Grid methods
 Base.size(grid::AbstractGrid) = grid.N
@@ -93,25 +95,26 @@ end
 ===========================================================================#
 
 abstract type MarkovProcess end
-struct DiscreteAR1 <: MarkovProcess
+@with_kw struct DiscreteAR1 <: MarkovProcess
     ρ::Real                     # Persistence
     σ::Real                     # Standard deviation
     grid::AbstractGrid          # Grid for the state variable
     Π::Matrix{<:Real}           # Transition matrix
     ss_dist::Vector{<:Real}     # Steady state distribution
-    function DiscreteAR1(N::Int, ρ::Real, σ::Real; method=rouwenhorst)
-        nodes, trans = method(N, ρ, σ)
-        trans = trans' |> collect
-        # SS Distribution
-        ss_dist = (trans^100000)[:, 1]
-        # Nodes
-        nodes = exp.(nodes)
-        nodes .= nodes / dot(ss_dist, nodes)
-        # Transition matrix
-        Π = trans' |> collect
-        return new(ρ, σ, BasicGrid(nodes), Π, ss_dist)
-    end
 end
+function _DiscreteAR1(; N::Int, ρ::Real, σ::Real, method=rouwenhorst)
+    nodes, trans = method(N, ρ, σ)
+    trans = trans' |> collect
+    # SS Distribution
+    ss_dist = (trans^100000)[:, 1]
+    # Nodes
+    nodes = exp.(nodes)
+    nodes .= nodes / dot(ss_dist, nodes)
+    # Transition matrix
+    Π = trans' |> collect
+    return DiscreteAR1(ρ, σ, BasicGrid(nodes), Π, ss_dist)
+end
+get_DiscreteAR1_parameters() = [:N, :ρ, :σ]
 
 # Methods
 Base.size(mkv::MarkovProcess) = Base.size(mkv.grid)
@@ -141,11 +144,9 @@ struct Herramientas
     grid_a::AbstractGrid
     states::Matrix{<:Real}
     ind::NamedTuple
-    function Herramientas(; N_a, curv_a, min_a, max_a, N_z, ρ_z, σ_z)
-        grid_a = CurvedGrid(N_a, curv_a, min_a, max_a)
-        process_z = DiscreteAR1(N_z, ρ_z, σ_z)
+    function Herramientas(; process_z::MarkovProcess, grid_a::AbstractGrid)
         ind = (z=1, a=2)
-        states = state_matrix(N_z, N_a, ind)
+        states = state_matrix(size(process_z), size(grid_a), ind)
         return new(process_z, grid_a, states, ind)
     end
 end
@@ -198,14 +199,14 @@ struct Households
     pref::Preferencias
     S::StateVariables
     G::PolicyFunctions
-    function Households(pars_h::NamedTuple, her::Herramientas)
+    function Households(her::Herramientas; tipo_pref, β::Real, γ::Real)
         # Unpack
         @unpack states, ind = her
         grid_z, grid_a = grids(her)
         # Number of agents
         N = size(states, 1)
         # Preferences
-        pref = Preferencias(pars_h...)
+        pref = Preferencias(tipo_pref, β, γ)
         # State variables
         zz = get_node.(Ref(grid_z), states[:, ind.z])
         aa = get_node.(Ref(grid_a), states[:, ind.a])
@@ -215,6 +216,7 @@ struct Households
         return new(N, pref, S, G)
     end
 end
+get_household_parameters() = [:tipo_pref, :β, :γ]
 
 
 
@@ -229,7 +231,7 @@ struct Firms
     F′k::Function       # Marginal product of capital
     F′l::Function       # Marginal product of labor
     ratio_KL::Function  # Capital-labor ratio
-    function Firms(α::Real, δ::Real)
+    function Firms(; α::Real, δ::Real)
         F = (K, L)   ->         K^α     * L^(1-α)
         F′k = (K, L) ->    α  * K^(α-1) * L^(1-α)
         F′l = (K, L) -> (1-α) * K^α     * L^(-α)
@@ -237,6 +239,7 @@ struct Firms
         return new(α, δ, F, F′k, F′l, ratio_KL)
     end
 end
+get_firm_parameters() = [:α, :δ]
 
 
 

@@ -46,6 +46,17 @@ function budget_constraint(outflow1::Vector{<:Real}, prices::Prices, S::StateVar
     return (1+r)*a + w*z - outflow1
 end
 
+# Guessing the policy functions
+function guess_G!(hh::Households, pr::Prices)::Nothing
+    # Unpack parameters
+    @unpack r, w = pr
+    @unpack z, a = hh.S
+    # Update policy functions
+    hh.G.c = r*a + w*z
+    hh.G.a′ = a
+    return nothing
+end
+
 # EGM: auxiliary functions
 function EGM_savings!(hh::Households, pr::Prices, her::Herramientas)::Nothing
     # Unpack
