@@ -6,16 +6,16 @@ tipo_pref,CRRA()
 α,1/3
 δ,0.1
 # Idiosyncratic shock parameters
-proc_z_N,5
-proc_z_tipo,DiscreteAR1
-proc_z_ρ,0.966
-proc_z_σ,0.15
+N_z,5
+tipo_z,DiscreteAR1
+ρ_z,0.966
+σ_z,0.15
 # Asset-grid parameters
-grid_a_tipo,CurvedGrid
-grid_a_N,100
-grid_a_min,0
-grid_a_max,1000.0
-grid_a_curv,1/4
+tipo_a,CurvedGrid
+N_a,100
+min_a,0
+max_a,1000.0
+curv_a,1/4
 # Solver parameters: K market
 cfg_r_tipo,LinearJumps()
 cfg_r_objective,"Capital market"

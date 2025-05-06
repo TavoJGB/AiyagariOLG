@@ -2,8 +2,8 @@
     HELPER FUNCTIONS
 ===========================================================================#
 
-function get_object(pars, prefix)
-    subset = subset_namedtuple(pars, prefix)
+function get_object(pars, substr; typesubstr::String="Prefix")
+    subset = subset_namedtuple(pars, substr; typesubstr)
     tipo = subset.tipo
     req_pars = get_required_parameters(tipo)
     return _get_object(tipo; getindex(subset, req_pars)...)
@@ -50,8 +50,8 @@ function build_model(
     pars_code = NamedTuple(kwargs)
     pars = merge(pars_file, pars_code)  # merge parameters, prioritising those introduced in the command line
     # Grids and processes
-    process_z = get_object(pars, "proc_z_")
-    grid_a = get_object(pars, "grid_a_")
+    process_z = get_object(pars, "_z"; typesubstr="Suffix")
+    grid_a = get_object(pars, "_a"; typesubstr="Suffix")
     # Configuration of solvers
     cfg_r = get_object(pars, "cfg_r_")
     cfg_hh = get_object(pars, "cfg_hh_")

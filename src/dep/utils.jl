@@ -265,9 +265,15 @@ end
     NAMED TUPLES
 ===========================================================================#
 
-function subset_namedtuple(nt::NamedTuple, prefix::String)
-    subset = nt[filter(key -> startswith(String(key), prefix), keys(nt))]
-    newkeys = Symbol.(replace.(String.(keys(subset)), prefix => ""))
+function subset_namedtuple(nt::NamedTuple, substr::String; typesubstr::String="Prefix")
+    if typesubstr == "Prefix"
+        subset = nt[filter(key -> startswith(String(key), substr), keys(nt))]
+    elseif typesubstr == "Suffix"
+        subset = nt[filter(key -> endswith(String(key), substr), keys(nt))]
+    else
+        error("typesubstr must be either 'Prefix' or 'Suffix'")
+    end
+    newkeys = Symbol.(replace.(String.(keys(subset)), substr => ""))
     newvals = values(subset)
     return NamedTuple(newkeys .=> newvals)
 end
