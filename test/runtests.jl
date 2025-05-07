@@ -24,8 +24,7 @@ end
 
 
 # MOST RECENT SIMULATION
-Aiyagari.BASE_FOLDER
-model_last = build_model("./parameters/latest_simulation.csv"; save_pars=false);
+model_last = build_model("../parameters/latest_simulation.csv"; save_pars=false);
 # Steady-state computations
 eco = steady(model_last...; r_0=0.04);
 # Testing

@@ -54,7 +54,8 @@ function build_model(
     outputpath = BASE_FOLDER * "/parameters/latest_simulation.csv",
     kwargs...
 )
-    println(filepath)
+    # println(pwd())
+    # println(filepath)
     # Read parameters
     pars_file = read_parameters(filepath)
     pars_code = NamedTuple(kwargs)
