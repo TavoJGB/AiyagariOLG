@@ -3,14 +3,14 @@ tipo_pref,Aiyagari.CRRA()
 γ,1.5
 α,0.3333333333333333
 δ,0.1
-N_z,7
+N_z,5
 tipo_z,Aiyagari.DiscreteAR1
 ρ_z,0.966
 σ_z,0.15
 tipo_a,Aiyagari.CurvedGrid
-N_a,100
+N_a,500
 min_a,0
-max_a,1000.0
+max_a,200
 curv_a,0.25
 cfg_r_tipo,LinearJumps()
 cfg_r_objective,"Capital market"

@@ -21,4 +21,6 @@ module Aiyagari
         export write_parameters
     include("./dep/ss_solve.jl")
         export steady
+    include("./dep/ss_analysis.jl")
+        export ss_summary
 end

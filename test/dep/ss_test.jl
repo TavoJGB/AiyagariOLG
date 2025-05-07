@@ -15,6 +15,8 @@ function ss_test(eco::Economía, her::Herramientas; tol=1e-6)
     # STATIONARY DISTRIBUTION
     # Total population is normalised to 1
     @test abs(sum(eco.distr) - 1) < tol
+    # Distribution is stationary
+    @test maximum(abs.(Q * distr - distr)) < tol
     # SS distribution by productivity level
     ss_z_dist = vcat([sum(distr[indJ]) for indJ in eachcol(states[:,ind.z].==(1:size(process_z))')]...)
     @test maximum(abs.(ss_z_dist - process_z.ss_dist)) < tol

@@ -242,20 +242,3 @@ function steady(hh::Households, fm::Firms, her::Herramientas, cfg::Configuration
     # Return the steady state economy
     return eco
 end
-
-
-
-#===========================================================================
-    IDENTIFICATION OF AGENTS
-===========================================================================#
-
-# Borrowing contrained agents
-function get_borrowing_constrained(a′, min_a, tol::Real)
-    return a′ .<= min_a + tol
-end
-function get_borrowing_constrained(
-    eco::Economía, her::Herramientas;
-    tol=(her.grid_a.nodes[2]-her.grid_a.nodes[1])/2
-)
-    return get_borrowing_constrained(eco.hh.G.a′, her.grid_a.min, tol)
-end
