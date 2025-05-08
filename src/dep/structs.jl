@@ -38,10 +38,22 @@ end
     CONFIGURATION
 ===========================================================================#
 
+@with_kw struct GraphConfig
+    figpath::String
+    plotsiz::Vector{<:Int}
+    fsize::Real
+    leg_fsize::Real
+    lwidth::Real
+end
+function _GraphConfig(; plotsiz::String, kwargs...)
+    return GraphConfig(; plotsiz=parse.(Int, split(plotsiz,"x")), kwargs...)
+end
+
 struct Configuration
     cfg_r::Solver
     cfg_hh::Solver
     cfg_distr::Solver
+    cfg_graph::GraphConfig
 end
 
 

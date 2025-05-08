@@ -32,3 +32,9 @@ cfg_distr_tipo=POWM()
 cfg_distr_objective="Stationary distribution"
 cfg_distr_tol=1e-16
 cfg_distr_maxit=1000
+# Graphs configuration
+cfg_graph_figpath="./Figuras/"
+cfg_graph_plotsiz="800x600"
+cfg_graph_fsize=14
+cfg_graph_leg_fsize=14
+cfg_graph_lwidth=2

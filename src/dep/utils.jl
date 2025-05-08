@@ -284,9 +284,21 @@ end
     IDENTIFICATION OF AGENTS
 ===========================================================================#
 
-function identify_group(her::Herramientas, var::Symbol, crit::Real)
+function identify_group(var::Vector{<:Real}, crit::Function)
+    return crit.(var)
+end
+function identify_group(var::Vector{<:Real}, crit::Int)
+    return identify_group(var, x -> x.==crit)
+end
+function identify_group(her::Herramientas, keyvar::Symbol, crit::Function)
     @unpack states, ind = her
-    return states[:, ind[var]] .== crit
+    return crit.(states[:, ind[keyvar]])
+end
+function identify_group(her::Herramientas, keyvar::Symbol, crit::Int)
+    return identify_group(her, keyvar, x -> x.==crit)
+end
+function identify_group(G::PolicyFunctions, keyvar::Symbol, crit::Function)
+    return crit.(getproperty(G, keyvar))
 end
 
 # Borrowing contrained agents (both beggining and end of period)

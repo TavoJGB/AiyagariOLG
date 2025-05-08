@@ -94,6 +94,41 @@ end
 
 
 #===========================================================================
+    VALUE FUNCTION
+===========================================================================#
+
+# Initial guess
+function guess_value(c::Vector{<:Real}, pref::Preferencias)
+    @unpack β, u = pref
+    return u.(c)/(1.0-β)
+end
+function guess_value(hh::Households)
+    return guess_value(hh.G.c, hh.pref)
+end
+
+# Value function
+function current_value(c::Vector{<:Real}, pref::Preferencias, Q::AbstractMatrix, v′::Vector{<:Real})
+    @unpack β, u = pref
+    return u.(c) + β * Q' * (v′)
+end
+function get_value(hh::Households, Q::AbstractMatrix; maxit=1000, tol=1e-6)
+    @unpack pref, G = hh
+    @unpack c = G
+    v′ = guess_value(c, pref)
+    for _=1:maxit
+        v = current_value(c, pref, Q, v′)
+        # Check convergence
+        if maximum(abs.(v′-v)) < tol
+            return v
+        end
+        v′ .= v
+    end
+    error("Value function did not converge")
+end
+
+
+
+#===========================================================================
     FIRMS' PROBLEM
 ===========================================================================#
 

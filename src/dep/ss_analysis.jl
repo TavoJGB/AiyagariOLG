@@ -106,7 +106,7 @@ Base.string(x::AbstractStatistic) = string(x.desc) * ": \t" * fmt(x)
 ===========================================================================#
 
 function ss_summary(eco::Economía, her::Herramientas)::Nothing
-    println("STEADY STATE SUMMARY")
+    println("\nSTEADY STATE SUMMARY")
     for stat in _ss_summary(eco, her)
         println("- ", string(stat))
     end
@@ -124,4 +124,100 @@ function _ss_summary(eco::Economía, her::Herramientas)::Vector
         Gini(hh.S.a, distr; desc="Wealth Gini"),
         get_pct_borrowing_constrained(distr, her),
     ]
+end
+
+
+
+#===========================================================================
+    GRAPHS: auxiliary functions
+===========================================================================#
+
+function plot_by_group(
+    xx::Vector{<:Real}, yy::Vector{<:Real}, cfg::GraphConfig, crits, args...;
+    xlab::String="", ylab::String="", tit::String="",
+    leglabs=repeat([""], size(crits,1))
+)
+    # Preliminaries
+    @unpack plotsiz, fsize, leg_fsize, lwidth = cfg
+    plot()
+    # Main lines
+    for (ii,cr) in pairs(crits)
+        ind_gr = identify_group(args..., cr)
+        plot!(xx[ind_gr], yy[ind_gr], label=leglabs[ii], linewidth=lwidth)
+    end
+    # General settings
+    xlabel!(xlab)
+    ylabel!(ylab)
+    title!(tit)
+    plot!(size=plotsiz, tickfontsize=fsize, legendfontsize=leg_fsize)
+end
+
+function plot_histogram_by_group(
+    xx::Vector{<:Real}, distr::Vector{<:Real}, cfg::GraphConfig, crits, args...;
+    xlab::String="", ylab::String="", tit::String="",
+    leglabs=repeat([""], size(crits,1))
+)
+    # Preliminaries
+    @unpack plotsiz, fsize, leg_fsize, lwidth = cfg
+    plot()
+    # Main lines
+    for (ii,cr) in pairs(crits)
+        ind_gr = identify_group(args..., cr)
+        stephist!(xx[ind_gr], weights=distr[ind_gr], label=leglabs[ii], linewidth=lwidth)
+    end
+    # General settings
+    xlabel!(xlab)
+    ylabel!(ylab)
+    title!(tit)
+    plot!(size=plotsiz, tickfontsize=fsize, legendfontsize=leg_fsize)
+end
+
+
+
+#===========================================================================
+    GRAPHS
+===========================================================================#
+
+function ss_graphs(eco::Economía, her::Herramientas, cfg::GraphConfig)::Nothing
+    # Unpacking
+    @unpack hh, Q, distr = eco
+    a = hh.S.a
+    @unpack c, a′ = hh.G
+    N_z = size(her.process_z)
+    malla_a = her.grid_a.nodes
+    @unpack figpath=cfg
+
+    # POLICY FUNCTIONS (by productivity group)
+    # Savings
+    plot_by_group(
+        a, a′, cfg, [1;N_z], her, :z,
+        leglabs=["low z", "high z"], tit="Policy functions: savings"
+    )
+    plot!(malla_a, malla_a, line=(cfg.lwidth, :dot), color=:darkgray, label="a' = a")
+    Plots.savefig(figpath * "ss_apol.png")
+    # Consumption
+    plot_by_group(
+        a, c, cfg, [1;N_z], her, :z,
+        leglabs=["low z", "high z"], tit="Policy functions: consumption")
+    Plots.savefig(figpath * "ss_cpol.png")
+
+    # VALUE FUNCTION (by productivity group)
+    v = get_value(hh, Q)
+    plot_by_group(
+        a, v, cfg, [1;N_z], her, :z,
+        leglabs=["low z", "high z"], tit="Value functions")
+    Plots.savefig(figpath * "ss_value.png")
+
+    # WEALTH DISTRIBUTION (by productivity group)
+    plot_histogram_by_group(
+        a, distr, cfg, [1;N_z], her, :z;
+        leglabs=["low z", "high z"], tit="Asset distribution"
+    )
+    Plots.savefig(figpath * "ss_asset_hist.png")
+    # plot_by_group(
+    #     a, distr, cfg, [1;N_z], her, :z,
+    #     leglabs=["low z", "high z"], tit="Asset distribution")
+    # Plots.savefig(figpath * "ss_asset_distr.png")
+
+    return nothing
 end

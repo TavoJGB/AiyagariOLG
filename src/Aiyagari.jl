@@ -7,6 +7,7 @@ module Aiyagari
     using IterativeSolvers  # powm!
     using LinearAlgebra     # dot()
     using Parameters        # unpack
+    using Plots
     # using QuantEcon         # rouwenhorst(), tauchen()
     using SparseArrays      # SparseMatrixCSC
 
@@ -22,5 +23,5 @@ module Aiyagari
     include("./dep/ss_solve.jl")
         export steady
     include("./dep/ss_analysis.jl")
-        export ss_summary
+        export ss_summary, ss_graphs
 end
