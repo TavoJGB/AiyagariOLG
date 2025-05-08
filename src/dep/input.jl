@@ -27,7 +27,7 @@ _get_object(tipo::SolverType; kwargs...) = Solver(tipo; kwargs...)
     READ PARAMETERS
 ===========================================================================#
 
-function read_parameters(filepath; comment='#', delim=',')
+function read_parameters(filepath; comment='#', delim='=')
     raw = []
     open(filepath, "r") do io
         while !eof(io)
@@ -61,7 +61,7 @@ function build_model(
     pars_code = NamedTuple(kwargs)
     pars = merge(pars_file, pars_code)  # merge parameters, prioritising those introduced in the command line
     # Write parameters in file
-    save_pars && write_parameters(outputpath, pars; delim=',')
+    save_pars && write_parameters(outputpath, pars; delim='=')
     # Grids and processes
     process_z = get_object(pars, "_z"; typesubstr="Suffix")
     grid_a = get_object(pars, "_a"; typesubstr="Suffix")
@@ -69,11 +69,12 @@ function build_model(
     cfg_r = get_object(pars, "cfg_r_")
     cfg_hh = get_object(pars, "cfg_hh_")
     cfg_distr = get_object(pars, "cfg_distr_")
+    cfg_graph = _GraphConfig(; subset_namedtuple(pars, "cfg_graph_")...)
     # Build structures
     her = Herramientas(; process_z, grid_a)
     hh = Households(her; getindex(pars, get_household_parameters())...)
     fm = Firms(; getindex(pars, get_firm_parameters())...)
-    cfg = Configuration(cfg_r, cfg_hh, cfg_distr)
+    cfg = Configuration(cfg_r, cfg_hh, cfg_distr, cfg_graph)
     # Return structures
     return (; hh, fm, her, cfg)
 end
