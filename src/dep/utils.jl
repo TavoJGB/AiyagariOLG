@@ -301,16 +301,15 @@ function identify_group(G::PolicyFunctions, keyvar::Symbol, crit::Function)
     return crit.(getproperty(G, keyvar))
 end
 
-# Borrowing contrained agents (both beggining and end of period)
-function get_borrowing_constrained(a′, min_a, tol::Real)
-    return a′ .<= min_a + tol
+# Borrowing contrained agents: end-of-period assets
+function get_borrowing_constrained(a′, min_a)
+    return a′ .<= min_a
 end
-function get_borrowing_constrained(
-    eco::Economía, her::Herramientas;
-    tol=(her.grid_a.nodes[2]-her.grid_a.nodes[1])/2
-)
-    return get_borrowing_constrained(eco.hh.G.a′, her.grid_a.min, tol)
+function get_borrowing_constrained(eco::Economía, her::Herramientas)
+    return get_borrowing_constrained(eco.hh.G.a′, her.grid_a.min)
 end
+
+# Borrowing contrained agents: beggining-of-period assets
 function get_borrowing_constrained(her::Herramientas)
     return identify_group(her, :a, 1)
 end

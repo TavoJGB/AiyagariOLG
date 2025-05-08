@@ -23,13 +23,10 @@ function ss_test(eco::Economía, her::Herramientas; tol=1e-6)
 
     # HOUSEHOLD'S PROBLEM
     # Euler equation (only applies to unconstrained households)
-    if false
-        errs_eu = err_euler(eco)
-        constrained = get_borrowing_constrained(eco, her; tol=0)
-        @test sum(distr .* (abs.(errs_eu).>tol) .* (.!constrained)) < tol
-        plot(hh.G.a′[.!constrained], errs_eu[.!constrained], seriestype=:scatter, title="Euler errors", xlabel="a′", ylabel="error", label="", legend=false)
-        plot(hh.S.a[.!constrained], errs_eu[.!constrained], seriestype=:scatter, title="Euler errors", xlabel="a", ylabel="error", label="", legend=false)
-    end
+    errs_eu = err_euler(eco)
+    unconstr = .!get_borrowing_constrained(eco, her)
+    @test maximum(abs.(errs_eu[unconstr])) < 1000*tol  # lower tolerance requires larger N_a 
+    # sum(distr .* (abs.(errs_eu).>100tol) .* (unconstr))
     # Budget constraint
     @test maximum(abs.(err_budget(eco))) < tol
 

@@ -134,6 +134,7 @@ end
 
 function plot_by_group(
     xx::Vector{<:Real}, yy::Vector{<:Real}, cfg::GraphConfig, crits, args...;
+    ptype=plot!,
     xlab::String="", ylab::String="", tit::String="",
     leglabs=repeat([""], size(crits,1))
 )
@@ -143,7 +144,7 @@ function plot_by_group(
     # Main lines
     for (ii,cr) in pairs(crits)
         ind_gr = identify_group(args..., cr)
-        plot!(xx[ind_gr], yy[ind_gr], label=leglabs[ii], linewidth=lwidth)
+        ptype(xx[ind_gr], yy[ind_gr], label=leglabs[ii], linewidth=lwidth)
     end
     # General settings
     xlabel!(xlab)
@@ -190,21 +191,21 @@ function ss_graphs(eco::Economía, her::Herramientas, cfg::GraphConfig)::Nothing
     # POLICY FUNCTIONS (by productivity group)
     # Savings
     plot_by_group(
-        a, a′, cfg, [1;N_z], her, :z,
+        a, a′, cfg, [1;N_z], her, :z;
         leglabs=["low z", "high z"], tit="Policy functions: savings"
     )
     plot!(malla_a, malla_a, line=(cfg.lwidth, :dot), color=:darkgray, label="a' = a")
     Plots.savefig(figpath * "ss_apol.png")
     # Consumption
     plot_by_group(
-        a, c, cfg, [1;N_z], her, :z,
+        a, c, cfg, [1;N_z], her, :z;
         leglabs=["low z", "high z"], tit="Policy functions: consumption")
     Plots.savefig(figpath * "ss_cpol.png")
 
     # VALUE FUNCTION (by productivity group)
     v = get_value(hh, Q)
     plot_by_group(
-        a, v, cfg, [1;N_z], her, :z,
+        a, v, cfg, [1;N_z], her, :z;
         leglabs=["low z", "high z"], tit="Value functions")
     Plots.savefig(figpath * "ss_value.png")
 
@@ -218,6 +219,16 @@ function ss_graphs(eco::Economía, her::Herramientas, cfg::GraphConfig)::Nothing
     #     a, distr, cfg, [1;N_z], her, :z,
     #     leglabs=["low z", "high z"], tit="Asset distribution")
     # Plots.savefig(figpath * "ss_asset_distr.png")
+
+    # EULER ERRORS (by productivity group)
+    errs_eu = err_euler(eco)
+    unconstr = .!get_borrowing_constrained(eco, her)
+    errs_labs = repeat([""], N_z)
+    errs_labs[[1,N_z]] .= ["low z", "high z"]
+    plot_by_group(
+        a[unconstr], errs_eu[unconstr], cfg, 1:N_z, her.states[unconstr, her.ind.z];
+        ptype=scatter!, leglabs=errs_labs, tit="Euler Errors")
+    Plots.savefig(figpath * "ss_euler_err.png")
 
     return nothing
 end
