@@ -51,7 +51,7 @@ function LinearJumps!(pars::SolverParameters, guess::Real, iterator!::Function, 
             return nothing
         else
             # Update guess
-            println("#$it: error = $err. Guess: $guess vs $newguess")
+            println("#$it \t Error: $err \t Guess: $(round(100*guess,digits=2)) % vs $(round(100*newguess,digits=2)) %")
             guess = wgt*guess + (1-wgt)*newguess
         end
     end
