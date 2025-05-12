@@ -318,3 +318,34 @@ struct Aggregates
         return new(A, A0, K, L, Y, C)
     end
 end
+
+
+
+#===========================================================================
+    STATISTICS
+===========================================================================#
+
+abstract type StatisticType end
+struct Share <:StatisticType end
+struct Percentage <:StatisticType end
+struct Mean <:StatisticType end
+
+abstract type AbstractStatistic end
+struct Stat{Ts<:StatisticType} <: AbstractStatistic
+    value::Float64
+    desc::String
+    function Stat(::Ts, value::Float64, desc::String) where {Ts<:StatisticType}
+        new{Ts}(value, desc)
+    end
+end
+struct StatDistr{Ts} <: AbstractStatistic where {Ts<:StatisticType}
+    values::Vector{<:Float64}
+    labels::Vector{<:String}
+    desc::String
+    function StatDistr(::Ts, values::Vector{<:Float64}, labels::Vector{<:String}, desc::String) where {Ts<:StatisticType}
+        new{Ts}(values, labels, desc)
+    end
+end
+Base.zip(sd::StatDistr{<:StatisticType}) = zip(sd.values, sd.labels)
+Base.size(sd::StatDistr{<:StatisticType}) = length(sd.values)
+Base.sum(sd::StatDistr{<:Percentage}) = sum(sd.values)

@@ -1,23 +1,4 @@
 #===========================================================================
-    AUXILIARY TYPES
-===========================================================================#
-
-abstract type StatisticType end
-struct Share <:StatisticType end
-struct Percentage <:StatisticType end
-
-abstract type AbstractStatistic end
-struct Stat{Ts<:StatisticType} <: AbstractStatistic
-    value::Float64
-    desc::String
-    function Stat(::Ts, value::Float64, desc::String) where {Ts<:StatisticType}
-        new{Ts}(value, desc)
-    end
-end
-
-
-
-#===========================================================================
     MARGINAL PROPENSITIES
 ===========================================================================#
 
@@ -45,7 +26,7 @@ function get_average_mpc(
     # We cannot compute MPC for the richest agent of each combination
     # of states
     ind_mpc = .!identify_group(her, :a, size(her.grid_a))
-    # Return weighted average of the MPC
+    # Return weighted average of the MPC (as a share because it's between 0 and 1)
     return Stat(Share(), dot(distr[ind_mpc], mpc) / sum(distr[ind_mpc]), desc)
 end
 
@@ -88,31 +69,123 @@ end
 
 
 #===========================================================================
-    FORMATTING RESULTS
+    QUANTILES
 ===========================================================================#
 
-function fmt(x::Stat{<:StatisticType}; digits::Int=2)
-    return string(round(x.value, digits=digits))
+# Matrix to help with the computation of quantiles
+function quantile_matrix(divs::Vector{<:Real}, var::Vector{<:Real}, distr::Vector{<:Real})::SparseMatrixCSC
+    nq = size(divs)[1]
+    # Rank nodes from lower to higher values
+    iSort = sortperm(var)
+    # Cumulative distribution
+    sorted_distr = distr[iSort]
+    cum_distr = cumsum(sorted_distr) / sum(sorted_distr)
+    # Find frontiers and weights
+    ind_L, ind_U, wgt = get_weights(Extrapolate(), divs, cum_distr)
+    # Matrix with indicators of quantiles
+        # First quantile (it's special because it has no lower bound)
+        n = ind_U[1]
+        rows = ones(Int, n)
+        cols = 1:n |> collect
+        vals = ones(Float64, n)
+        vals[end] = 1-wgt[1]
+        # Rest of quantiles
+        for qq=2:nq
+            n = ind_U[qq]-ind_L[qq-1]
+            append!(rows, fill(qq, n))
+            append!(cols, ind_U[qq-1]:ind_U[qq])
+            append!(vals, [wgt[qq-1]; ones(Float64, n-2); 1-wgt[qq]])
+        end
+        # Last quantile (it's special because it has no upper bound)
+        vals[end] = 1.0
+    # Recover the original order
+    return sparse(rows, iSort[cols], vals, nq, size(var)[1])
 end
-function fmt(x::Stat{<:Percentage}; digits::Int=2)
-    return string(round(100*x.value, digits=digits)) * " %"
+# Method to get nq equally-sized quantiles:
+function quantile_matrix(nq::Int, args...)::SparseMatrixCSC
+    divs = range(0,1;length=nq+1)[2:end] |> collect
+    return quantile_matrix(divs, args...)
 end
-Base.string(x::AbstractStatistic) = string(x.desc) * ": \t" * fmt(x)
+
+# Default labels
+function default_labels(quantmat::AbstractArray, distr::Vector{<:Real})
+    # Get the quantiles
+    q = [0; round.(Int, 100*cumsum(quantmat*distr))]
+    # Get the labels
+    return ["P_$(q[i-1])-$(q[i])" for i in ((1:size(quantmat)[1]) .+ 1)]
+end
+
+# Computing quantiles
+function get_quants(
+    quantmat::AbstractArray, var::Vector{<:Real}, distr::Vector{<:Real};
+    labels::Vector{<:String}=default_labels(quantmat,distr),
+    desc::String="Share of total by quantile"
+)
+    return StatDistr(Percentage(),
+                     quantmat*(var .* distr) / dot(var,distr),
+                     labels, desc)
+end
+function get_quants(arg_divs, var::Vector{<:Real}, distr::Vector{<:Real}; kwargs...)
+    return get_quants(quantile_matrix(arg_divs, var, distr), var, distr; kwargs...)
+end
+function get_avg_quants(
+    quantmat::AbstractArray, var::Vector{<:Real}, distr::Vector{<:Real};
+    labels::Vector{<:String}=default_labels(quantmat,distr),
+    desc::String="Mean by quantile"
+)
+    return StatDistr(Mean(),
+                     quantmat*(var .* distr) ./ (quantmat*distr),
+                     labels, desc)
+end
+function get_avg_quants(arg_divs, var::Vector{<:Real}, distr::Vector{<:Real}; kwargs...)
+    return get_avg_quants(quantile_matrix(arg_divs, var, distr), var, distr; kwargs...)
+end
 
 
 
 #===========================================================================
-    SHOW RESULTS
+    FORMATTING RESULTS
 ===========================================================================#
 
-function ss_summary(eco::Economía, her::Herramientas)::Nothing
-    println("\nSTEADY STATE SUMMARY")
-    for stat in _ss_summary(eco, her)
+fmt(x::Stat{<:StatisticType}; digits::Int=2) = string(round(x.value, digits=digits))
+function fmt(::Percentage, x::Real; digits::Int=2)
+    if digits==0
+        return string(round(Int, 100*x)) * " %"
+    else
+        return string(round(100*x, digits=digits)) * " %"
+    end
+end
+fmt(x::Stat{<:Percentage}; digits::Int=2) = fmt(Percentage(), x.value; digits=digits)
+Base.string(x::AbstractStatistic) = string(x.desc) * ": \t" * fmt(x)
+function Base.show(xs::Vector{<:Stat{<:StatisticType}})::Nothing
+    for stat in xs
         println("- ", string(stat))
     end
     return nothing
 end
-function _ss_summary(eco::Economía, her::Herramientas)::Vector
+function Base.show(x::StatDistr{Ts}) where {Ts<:StatisticType}
+    println(string(x.desc) * ":")
+    for (val, lab) in zip(x)
+        println("\t ", lab, ": ", fmt(Ts(), val))
+    end
+end
+function Base.show(xs::Vector{<:StatDistr{Ts}}) where {Ts<:StatisticType}
+    header = [""; xs[1].labels...]
+    ncol = size(xs[1])+1
+    data = Matrix{String}(undef, length(xs), ncol)
+    for (i,x) in pairs(xs)
+        data[i,:] .= [x.desc; fmt.(Ref(Ts()), x.values; digits=0)...]
+    end
+    pretty_table(data; header, alignment=[:l; fill(:c, ncol-1)])
+end
+
+
+
+#===========================================================================
+    SUMMARISE RESULTS
+===========================================================================#
+
+function ss_summarise(eco::Economía, her::Herramientas)::Vector
     agg = Aggregates(eco)
     @unpack K, C, Y = agg
     @unpack hh, distr = eco
@@ -124,6 +197,36 @@ function _ss_summary(eco::Economía, her::Herramientas)::Vector
         Gini(hh.S.a, distr; desc="Wealth Gini"),
         get_pct_borrowing_constrained(distr, her),
     ]
+end
+function ss_distributional_analysis(eco::Economía; nq::Int=5)
+    @unpack hh, distr, pr = eco
+    @unpack a, z = hh.S
+    # Quantile computation
+    quantiles_inc = get_quants( nq, pr.w*z, distr;
+                                labels=["Q$(i)" for i in 1:nq],
+                                desc="Share of total income by quintile")
+    quantiles_wth = get_quants( nq, a, distr;
+                                labels=["Q$(i)" for i in 1:nq],
+                                desc="Share of total wealth by quintile")
+    # Print results
+    return [quantiles_inc, quantiles_wth]
+end
+
+
+
+#===========================================================================
+    SHOW RESULTS
+===========================================================================#
+
+function ss_analysis(eco::Economía, her::Herramientas; kwargs...)::Nothing
+    println("\nSTEADY STATE ANALYSIS")
+    # Summary
+    println("\nSummary")
+    show(ss_summarise(eco, her))
+    # Distribution
+    println("\nDistributional analysis: cross-section")
+    show(ss_distributional_analysis(eco; kwargs...))
+    return nothing
 end
 
 
@@ -182,8 +285,9 @@ end
 function ss_graphs(eco::Economía, her::Herramientas, cfg::GraphConfig)::Nothing
     # Unpacking
     @unpack hh, Q, distr = eco
-    a = hh.S.a
+    @unpack a, z = hh.S
     @unpack c, a′ = hh.G
+    w = eco.pr.w
     N_z = size(her.process_z)
     malla_a = her.grid_a.nodes
     @unpack figpath=cfg
@@ -229,6 +333,11 @@ function ss_graphs(eco::Economía, her::Herramientas, cfg::GraphConfig)::Nothing
         a[unconstr], errs_eu[unconstr], cfg, 1:N_z, her.states[unconstr, her.ind.z];
         ptype=scatter!, leglabs=errs_labs, tit="Euler Errors")
     Plots.savefig(figpath * "ss_euler_err.png")
+
+    # DISTRIBUTIONS
+    nq = 5
+    quantmat_wth = quantile_matrix(nq, a, distr)
+    quantmat_inc = quantile_matrix(nq, w*z, distr)
 
     return nothing
 end

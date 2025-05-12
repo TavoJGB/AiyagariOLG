@@ -8,6 +8,7 @@ module Aiyagari
     using LinearAlgebra     # dot()
     using Parameters        # unpack
     using Plots
+    using PrettyTables      # pretty_table() for display of results
     # using QuantEcon         # rouwenhorst(), tauchen()
     using SparseArrays      # SparseMatrixCSC
 
@@ -22,6 +23,6 @@ module Aiyagari
         export write_parameters
     include("./dep/ss_solve.jl")
         export steady
-    include("./dep/ss_analysis.jl")
-        export ss_summary, ss_graphs
+    include("./dep/equil_analysis.jl")
+        export ss_analysis, ss_summary, ss_distributional_analysis, ss_graphs
 end

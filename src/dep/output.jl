@@ -14,3 +14,9 @@ function write_parameters(filepath, pars::NamedTuple; delim=',')
     end
     close(csvfile)
 end
+
+function write_results()
+end
+
+function compare_results()
+end
