@@ -1,8 +1,8 @@
 #===========================================================================
-    WRITE PARAMETERS IN FILE
+    WRITE IN CSV FILE
 ===========================================================================#
 
-function write_parameters(filepath, pars::NamedTuple; delim=',')
+function export_csv(filepath, pars::NamedTuple; delim='=')
     # Need double quotes for strings
     ind_str = (typeof.(values(pars)) .<: String) |> collect
     newvals = values(pars) |> collect
@@ -15,7 +15,23 @@ function write_parameters(filepath, pars::NamedTuple; delim=',')
     close(csvfile)
 end
 
-function write_results()
+
+
+#===========================================================================
+    PREPARE TO BE EXPORTED
+===========================================================================#
+
+# Main function
+function exportable(vec::Vector)
+    return merge(exportable.(vec)...)
+end
+
+# Exporting StatDistr
+function exportable(sd::StatDistr{<:StatisticType, <:EconomicVariable})
+    keyvar = string(get_symbol(sd))
+    vec_keys = keyvar * "_" .* sd.labels
+    vec_vals = sd.values
+    return NamedTuple(Symbol.(vec_keys) .=> vec_vals)
 end
 
 function compare_results()

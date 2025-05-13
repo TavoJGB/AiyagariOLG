@@ -20,7 +20,7 @@ module Aiyagari
     include("./dep/input.jl")
         export build_model
     include("./dep/output.jl")
-        export write_parameters
+        export write_parameters, compare_results
     include("./dep/ss_solve.jl")
         export steady
     include("./dep/equil_analysis.jl")

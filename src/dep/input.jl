@@ -24,10 +24,10 @@ _get_object(tipo::SolverType; kwargs...) = Solver(tipo; kwargs...)
 
 
 #===========================================================================
-    READ PARAMETERS
+    READ PARAMETERS OR RESULTS
 ===========================================================================#
 
-function read_parameters(filepath; comment='#', delim='=')
+function import_csv(filepath; comment='#', delim='=')
     raw = []
     open(filepath, "r") do io
         while !eof(io)
@@ -49,19 +49,19 @@ end
 ===========================================================================#
 
 function build_model(
-    filepath = BASE_FOLDER * "/parameters/default_parameters.csv";
+    filepath = BASE_FOLDER * "/Simulations/parameters/default_parameters.csv";
     save_pars::Bool=true,   # by default, save parameters in file
-    outputpath = BASE_FOLDER * "/parameters/latest_simulation.csv",
+    outputpath = BASE_FOLDER * "/Simulations/parameters/latest_simulation.csv",
     kwargs...
 )
     # println(pwd())
     # println(filepath)
     # Read parameters
-    pars_file = read_parameters(filepath)
+    pars_file = import_csv(filepath)
     pars_code = NamedTuple(kwargs)
     pars = merge(pars_file, pars_code)  # merge parameters, prioritising those introduced in the command line
     # Write parameters in file
-    save_pars && write_parameters(outputpath, pars; delim='=')
+    save_pars && export_csv(outputpath, pars; delim='=')
     # Grids and processes
     process_z = get_object(pars, "_z"; typesubstr="Suffix")
     grid_a = get_object(pars, "_a"; typesubstr="Suffix")

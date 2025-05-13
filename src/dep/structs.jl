@@ -322,6 +322,73 @@ end
 
 
 #===========================================================================
+    ECONOMIC VARIABLES
+===========================================================================#
+
+
+abstract type EconomicVariable end
+struct Savings <: EconomicVariable end
+struct Assets <: EconomicVariable end
+struct Consumption <: EconomicVariable end
+struct Labour_Income <: EconomicVariable end
+struct Interest_Rate <: EconomicVariable end
+struct Capital <: EconomicVariable end
+
+function get_economic_variable(key::Symbol)
+    if key == :a′
+        return Savings
+    elseif key == :a
+        return Assets
+    elseif key == :c
+        return Consumption
+    elseif key == :incL
+        return Labour_Income
+    elseif key == :r
+        return Interest_Rate
+    elseif key == :K
+        return Capital
+    else
+        error("Unknown economic variable: $key")
+    end
+end
+function get_var_string(key::Symbol)
+    if key == :a′
+        return "savings"
+    elseif key == :a
+        return "assets"
+    elseif key == :c
+        return "consumption"
+    elseif key == :incL
+        return "labour income"
+    elseif key == :r
+        return "interest rate"
+    elseif key == :K
+        return "capital"
+    else
+        error("Unknown economic variable: $key")
+    end
+end
+function get_symbol(ev::EconomicVariable)
+    if ev isa Savings
+        return :a′
+    elseif ev isa Assets
+        return :a
+    elseif ev isa Consumption
+        return :c
+    elseif ev isa Labour_Income
+        return :incL
+    elseif ev isa Interest_Rate
+        return :r
+    elseif ev isa Capital
+        return :K
+    else
+        error("Unknown economic variable: $ev")
+    end
+end
+
+
+
+#===========================================================================
     STATISTICS
 ===========================================================================#
 
@@ -331,21 +398,32 @@ struct Percentage <:StatisticType end
 struct Mean <:StatisticType end
 
 abstract type AbstractStatistic end
-struct Stat{Ts<:StatisticType} <: AbstractStatistic
+struct Stat{Ts<:StatisticType, Ev<:EconomicVariable} <: AbstractStatistic
     value::Float64
     desc::String
-    function Stat(::Ts, value::Float64, desc::String) where {Ts<:StatisticType}
-        new{Ts}(value, desc)
+    function Stat(::Ts, value::Float64, keyvar::Symbol, desc::String) where {Ts<:StatisticType}
+        new{Ts, get_economic_variable(keyvar)}(value, desc)
     end
 end
-struct StatDistr{Ts} <: AbstractStatistic where {Ts<:StatisticType}
+struct StatDistr{Ts<:StatisticType, Ev<:EconomicVariable} <: AbstractStatistic
     values::Vector{<:Float64}
     labels::Vector{<:String}
     desc::String
-    function StatDistr(::Ts, values::Vector{<:Float64}, labels::Vector{<:String}, desc::String) where {Ts<:StatisticType}
-        new{Ts}(values, labels, desc)
+    function StatDistr(::Ts, values::Vector{<:Float64}, labels::Vector{<:String}, keyvar::Symbol, desc::String) where {Ts<:StatisticType}
+        new{Ts, get_economic_variable(keyvar)}(values, labels, desc)
     end
 end
+
+# Methods
 Base.zip(sd::StatDistr{<:StatisticType}) = zip(sd.values, sd.labels)
 Base.size(sd::StatDistr{<:StatisticType}) = length(sd.values)
 Base.sum(sd::StatDistr{<:Percentage}) = sum(sd.values)
+get_economic_variable(::Stat{<:StatisticType, Ev}) where {Ev<:EconomicVariable} = Ev
+get_economic_variable(::StatDistr{<:StatisticType, Ev}) where {Ev<:EconomicVariable} = Ev
+get_symbol(::Stat{<:StatisticType, Ev}) where {Ev<:EconomicVariable} = get_symbol(Ev())
+get_symbol(::StatDistr{<:StatisticType, Ev}) where {Ev<:EconomicVariable} = get_symbol(Ev())
+function describe(ev::EconomicVariable)
+    desc = ev |> nameof |> string 
+    replace!("_" => " ", desc)
+    return lowercase(desc)
+end

@@ -27,7 +27,7 @@ function get_average_mpc(
     # of states
     ind_mpc = .!identify_group(her, :a, size(her.grid_a))
     # Return weighted average of the MPC (as a share because it's between 0 and 1)
-    return Stat(Share(), dot(distr[ind_mpc], mpc) / sum(distr[ind_mpc]), desc)
+    return Stat(Share(), dot(distr[ind_mpc], mpc) / sum(distr[ind_mpc]), :c, desc)
 end
 
 
@@ -42,7 +42,7 @@ function get_pct_borrowing_constrained(
 )
     return Stat(Percentage(), 
                 sum(distr[get_borrowing_constrained(her)]) / sum(distr),
-                desc)
+                :a, desc)
 end
 
 
@@ -52,7 +52,7 @@ end
 ===========================================================================#
 
 function Gini(
-    ys::Vector{<:Real}, distr::Vector{<:Real};
+    ys::Vector{<:Real}, distr::Vector{<:Real}, keyvar::Symbol;
     desc::String="Gini coefficient"
 )
     @assert size(ys)==size(distr)
@@ -63,7 +63,7 @@ function Gini(
     distr_Gini = similar(distr)
     distr_Gini .= distr[iys]
     Ss = [0.0; cumsum(ys_Gini.*distr_Gini)]
-    return Stat(Share(), 1.0 - dot(distr, (Ss[1:end-1].+Ss[2:end]))/Ss[end], desc)
+    return Stat(Share(), 1.0 - dot(distr, (Ss[1:end-1].+Ss[2:end]))/Ss[end], keyvar, desc)
 end
 
 
@@ -115,30 +115,63 @@ function default_labels(quantmat::AbstractArray, distr::Vector{<:Real})
     return ["P_$(q[i-1])-$(q[i])" for i in ((1:size(quantmat)[1]) .+ 1)]
 end
 
-# Computing quantiles
+# Computing quantiles: shares
 function get_quants(
-    quantmat::AbstractArray, var::Vector{<:Real}, distr::Vector{<:Real};
+    quantmat::AbstractArray, var::Vector{<:Real}, distr::Vector{<:Real}, keyvar::Symbol;
     labels::Vector{<:String}=default_labels(quantmat,distr),
-    desc::String="Share of total by quantile"
+    desc::String="Share of total $(get_var_string(keyvar)) by quantile"
 )
     return StatDistr(Percentage(),
                      quantmat*(var .* distr) / dot(var,distr),
-                     labels, desc)
+                     labels, keyvar, desc)
 end
-function get_quants(arg_divs, var::Vector{<:Real}, distr::Vector{<:Real}; kwargs...)
-    return get_quants(quantile_matrix(arg_divs, var, distr), var, distr; kwargs...)
+function get_quants(arg_divs, var::Vector{<:Real}, distr::Vector{<:Real}, args...; kwargs...)
+    return get_quants(quantile_matrix(arg_divs, var, distr), var, distr, args...; kwargs...)
 end
+
+# Computing quantiles: means
 function get_avg_quants(
-    quantmat::AbstractArray, var::Vector{<:Real}, distr::Vector{<:Real};
+    quantmat::AbstractArray, var::Vector{<:Real}, distr::Vector{<:Real}, keyvar::Symbol;
     labels::Vector{<:String}=default_labels(quantmat,distr),
-    desc::String="Mean by quantile"
+    desc::String="Mean $(get_var_string(keyvar)) by quantile"
 )
     return StatDistr(Mean(),
                      quantmat*(var .* distr) ./ (quantmat*distr),
-                     labels, desc)
+                     labels, keyvar, desc)
 end
-function get_avg_quants(arg_divs, var::Vector{<:Real}, distr::Vector{<:Real}; kwargs...)
-    return get_avg_quants(quantile_matrix(arg_divs, var, distr), var, distr; kwargs...)
+function get_avg_quants(arg_divs, var::Vector{<:Real}, distr::Vector{<:Real}, args...; kwargs...)
+    return get_avg_quants(quantile_matrix(arg_divs, var, distr), var, distr, args...; kwargs...)
+end
+
+
+
+#===========================================================================
+    SUMMARISE RESULTS
+===========================================================================#
+
+function ss_summarise(eco::Economía, her::Herramientas)
+    agg = Aggregates(eco)
+    @unpack K, C, Y = agg
+    @unpack hh, distr = eco
+    return (;
+        r = Stat(Percentage(), eco.pr.r, :r, "Real interest rate"),
+        ratio_KY = Stat(Share(), K/Y, :K, "Capital to GDP"),
+        ratio_CY = Stat(Share(), C/Y, :c, "Consumption to GDP"),
+        mean_mpc = get_average_mpc(eco, her),
+        gini_a = Gini(hh.S.a, distr, :a; desc="Assets Gini"),
+        pct_bconstr = get_pct_borrowing_constrained(distr, her)
+    )
+end
+function ss_distributional_analysis(eco::Economía; nq::Int=5)
+    @unpack hh, distr, pr = eco
+    @unpack a, z = hh.S
+    # Quantile computation
+    quantiles_inc = get_quants( nq, pr.w*z, distr, :incL;
+                                labels=["Q$(i)" for i in 1:nq])
+    quantiles_wth = get_quants( nq, a, distr, :a;
+                                labels=["Q$(i)" for i in 1:nq])
+    # Print results
+    return [quantiles_inc, quantiles_wth]
 end
 
 
@@ -157,12 +190,22 @@ function fmt(::Percentage, x::Real; digits::Int=2)
 end
 fmt(x::Stat{<:Percentage}; digits::Int=2) = fmt(Percentage(), x.value; digits=digits)
 Base.string(x::AbstractStatistic) = string(x.desc) * ": \t" * fmt(x)
-function Base.show(xs::Vector{<:Stat{<:StatisticType}})::Nothing
-    for stat in xs
+
+
+
+#===========================================================================
+    SHOW RESULTS
+===========================================================================#
+
+# Print summary
+function Base.show(xs::NamedTuple{<:Any, <:Tuple{Vararg{Stat}}})::Nothing
+    for stat in values(xs)
         println("- ", string(stat))
     end
     return nothing
 end
+
+# Print distributional analysis
 function Base.show(x::StatDistr{Ts}) where {Ts<:StatisticType}
     println(string(x.desc) * ":")
     for (val, lab) in zip(x)
@@ -179,53 +222,22 @@ function Base.show(xs::Vector{<:StatDistr{Ts}}) where {Ts<:StatisticType}
     pretty_table(data; header, alignment=[:l; fill(:c, ncol-1)])
 end
 
-
-
-#===========================================================================
-    SUMMARISE RESULTS
-===========================================================================#
-
-function ss_summarise(eco::Economía, her::Herramientas)::Vector
-    agg = Aggregates(eco)
-    @unpack K, C, Y = agg
-    @unpack hh, distr = eco
-    return [
-        Stat(Percentage(), eco.pr.r, "Real interest rate"),
-        Stat(Share(), K/Y, "Capital to GDP"),
-        Stat(Share(), C/Y, "Consumption to GDP"),
-        get_average_mpc(eco, her),
-        Gini(hh.S.a, distr; desc="Wealth Gini"),
-        get_pct_borrowing_constrained(distr, her),
-    ]
-end
-function ss_distributional_analysis(eco::Economía; nq::Int=5)
-    @unpack hh, distr, pr = eco
-    @unpack a, z = hh.S
-    # Quantile computation
-    quantiles_inc = get_quants( nq, pr.w*z, distr;
-                                labels=["Q$(i)" for i in 1:nq],
-                                desc="Share of total income by quintile")
-    quantiles_wth = get_quants( nq, a, distr;
-                                labels=["Q$(i)" for i in 1:nq],
-                                desc="Share of total wealth by quintile")
-    # Print results
-    return [quantiles_inc, quantiles_wth]
-end
-
-
-
-#===========================================================================
-    SHOW RESULTS
-===========================================================================#
-
-function ss_analysis(eco::Economía, her::Herramientas; kwargs...)::Nothing
+# Main function
+function ss_analysis(eco::Economía, her::Herramientas;
+                     save_results::Bool=true,   # by default, save results in file
+                     filepath = BASE_FOLDER * "/Simulations/results/latest_simulation.csv",
+                     kwargs...)::Nothing
     println("\nSTEADY STATE ANALYSIS")
     # Summary
     println("\nSummary")
-    show(ss_summarise(eco, her))
+    ss_summ = ss_summarise(eco, her)
+    show(ss_summ)
     # Distribution
     println("\nDistributional analysis: cross-section")
-    show(ss_distributional_analysis(eco; kwargs...))
+    ss_crosssection = ss_distributional_analysis(eco; kwargs...)
+    show(ss_crosssection)
+    # Export results
+    save_results && export_csv(filepath, exportable([ss_summ; ss_crosssection]); delim='=')
     return nothing
 end
 
@@ -333,11 +345,5 @@ function ss_graphs(eco::Economía, her::Herramientas, cfg::GraphConfig)::Nothing
         a[unconstr], errs_eu[unconstr], cfg, 1:N_z, her.states[unconstr, her.ind.z];
         ptype=scatter!, leglabs=errs_labs, tit="Euler Errors")
     Plots.savefig(figpath * "ss_euler_err.png")
-
-    # DISTRIBUTIONS
-    nq = 5
-    quantmat_wth = quantile_matrix(nq, a, distr)
-    quantmat_inc = quantile_matrix(nq, w*z, distr)
-
     return nothing
 end
