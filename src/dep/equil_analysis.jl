@@ -58,12 +58,10 @@ function Gini(
     @assert size(ys)==size(distr)
     iys = sortperm(ys)
 
-    ys_Gini = similar(ys)
-    ys_Gini .= ys[iys]
-    distr_Gini = similar(distr)
-    distr_Gini .= distr[iys]
+    ys_Gini = ys[iys]
+    distr_Gini = distr[iys]
     Ss = [0.0; cumsum(ys_Gini.*distr_Gini)]
-    return Stat(Share(), 1.0 - dot(distr, (Ss[1:end-1].+Ss[2:end]))/Ss[end], keyvar, desc)
+    return Stat(Share(), 1.0 - dot(distr_Gini, (Ss[1:end-1].+Ss[2:end]))/Ss[end], keyvar, desc)
 end
 
 
@@ -234,10 +232,10 @@ function ss_analysis(eco::Economía, her::Herramientas;
     show(ss_summ)
     # Distribution
     println("\nDistributional analysis: cross-section")
-    ss_crosssection = ss_distributional_analysis(eco; kwargs...)
-    show(ss_crosssection)
+    ss_distr_cs = ss_distributional_analysis(eco; kwargs...)
+    show(ss_distr_cs)
     # Export results
-    save_results && export_csv(filepath, exportable([ss_summ; ss_crosssection]); delim='=')
+    save_results && export_csv(filepath, exportable([ss_summ; ss_distr_cs]); delim='=')
     return nothing
 end
 
