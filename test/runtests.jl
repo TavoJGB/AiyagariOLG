@@ -14,18 +14,21 @@ include("./dep/ss_test.jl")
 tol = 1e-6
 
 
-# DEFAULT ECONOMY
-model_dft = build_model(; save_pars=false);
+# TEST ECONOMY
+# Test that we keep getting the same results for a given set of parameters
+model_tst = build_model("../Simulations/parameters/test_parameters.csv"; save_pars=false);
 # Steady-state computations
-eco = steady(model_dft...; r_0=0.04);
+eco = steady(model_tst...; r_0=0.04);
 # Testing
 @testset "BENCHMARK SIMULATION: Steady State" begin
-    ss_test(eco, model_dft.her; tol)
+    ss_test(eco, model_tst.her; tol)
     quantiles_test(eco; tol)
+    @test compare_results(eco, model_tst.her) < tol
 end
 
 
 # MOST RECENT SIMULATION
+# Test that all equilibrium conditions are satisfied for the most recent simulation
 model_last = build_model("../Simulations/parameters/latest_simulation.csv"; save_pars=false);
 # Steady-state computations
 eco = steady(model_last...; r_0=0.04);

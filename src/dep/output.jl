@@ -34,5 +34,29 @@ function exportable(sd::StatDistr{<:StatisticType, <:EconomicVariable})
     return NamedTuple(Symbol.(vec_keys) .=> vec_vals)
 end
 
-function compare_results()
+# Exporting NamedTuple of stats
+function exportable(nt::NamedTuple{<:Any, <:Tuple{Vararg{Stat}}})
+    vec_keys = keys(nt)
+    vec_vals = [x.value for x in nt]
+    return NamedTuple(vec_keys .=> vec_vals)
+end
+
+
+
+#===========================================================================
+    COMPARE RESULTS
+===========================================================================#
+
+function compare_results(vec_results::Vector{<:NamedTuple})
+    return maximum(abs.(diff(collect.(values.(vec_results)))[1]))
+end
+function compare_results(vec_filepaths::Vector{<:String})
+    vec_results = import_csv.(vec_filepaths)
+    return compare_results(vec_results)
+end
+function compare_results(eco::Economía, her::Herramientas;
+                         compfilepath::String=BASE_FOLDER * "/Simulations/results/test_simulation.csv")
+    vec_results = [ exportable([ss_summarise(eco, her), ss_distributional_analysis(eco;nq=5)]),
+                    import_csv(compfilepath) ]
+    return compare_results(vec_results)
 end
