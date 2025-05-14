@@ -72,32 +72,16 @@ end
 
 # Matrix to help with the computation of quantiles
 function quantile_matrix(divs::Vector{<:Real}, var::Vector{<:Real}, distr::Vector{<:Real})::SparseMatrixCSC
-    nq = size(divs)[1]
+    nq = size(divs,1)
     # Rank nodes from lower to higher values
     iSort = sortperm(var)
     # Cumulative distribution
     sorted_distr = distr[iSort]
     cum_distr = cumsum(sorted_distr) / sum(sorted_distr)
-    # Find frontiers and weights
-    ind_L, ind_U, wgt = get_weights(Extrapolate(), divs, cum_distr)
     # Matrix with indicators of quantiles
-        # First quantile (it's special because it has no lower bound)
-        n = ind_U[1]
-        rows = ones(Int, n)
-        cols = 1:n |> collect
-        vals = ones(Float64, n)
-        vals[end] = 1-wgt[1]
-        # Rest of quantiles
-        for qq=2:nq
-            n = ind_U[qq]-ind_L[qq-1]
-            append!(rows, fill(qq, n))
-            append!(cols, ind_U[qq-1]:ind_U[qq])
-            append!(vals, [wgt[qq-1]; ones(Float64, n-2); 1-wgt[qq]])
-        end
-        # Last quantile (it's special because it has no upper bound)
-        vals[end] = 1.0
+
     # Recover the original order
-    return sparse(rows, iSort[cols], vals, nq, size(var)[1])
+    return sparse(rows, iSort[cols], vals, nq, size(var,1))
 end
 # Method to get nq equally-sized quantiles:
 function quantile_matrix(nq::Int, args...)::SparseMatrixCSC
@@ -110,7 +94,7 @@ function default_labels(quantmat::AbstractArray, distr::Vector{<:Real})
     # Get the quantiles
     q = [0; round.(Int, 100*cumsum(quantmat*distr))]
     # Get the labels
-    return ["P_$(q[i-1])-$(q[i])" for i in ((1:size(quantmat)[1]) .+ 1)]
+    return ["P_$(q[i-1])-$(q[i])" for i in ((1:size(quantmat,1)) .+ 1)]
 end
 
 # Computing quantiles: shares

@@ -29,7 +29,7 @@ function solve(solver::Solver{<:POWM}, args...)
     return POWM(solver.p, args...)
 end
 function POWM(pars::SolverParameters, Q::AbstractMatrix)
-    N = size(Q)[1]
+    N = size(Q,1)
     @unpack maxit, tol = pars
     _, x = powm!(Q, ones(N), maxiter=maxit, tol=tol)
     # returns the approximate largest eigenvalue λ of M and one of its eigenvector
