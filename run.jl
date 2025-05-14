@@ -1,7 +1,7 @@
 using Aiyagari
 
 # Settings
-model = build_model(; N_z=5, N_a=500);
+model = build_model(; N_z=5, N_a=150);
 
 # Compute steady state
 eco = steady(model...; r_0=0.04);

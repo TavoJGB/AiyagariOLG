@@ -70,22 +70,134 @@ end
     QUANTILES
 ===========================================================================#
 
+abstract type QuantileType end
+struct BasicQuantile <: QuantileType end
+struct TopQuantile <: QuantileType end
+struct BottomQuantile <: QuantileType end
+
+# Auxiliary function: gives the number of quantiles
+get_qs(::BasicQuantile, divs; current_q::Int=1) = (0:size(divs,1)) .+ current_q
+get_qs(::TopQuantile, divs; current_q::Int=1) = (0:size(divs,1)-1) .+ current_q
+get_qs(::BottomQuantile, divs; current_q::Int=1) = (0:size(divs,1)-1) .+ current_q
+
+# Function to assign individuals to quantiles and return vectors with
+# indexes and values
+# 1. QuantileType-specific functions
+function _quantile_vecs!(
+    rows::Vector{<:Int}, cols::Vector{<:Int}, vals::Vector{<:Real},
+    ::BasicQuantile, ind_L::Vector{<:Int}, ind_U::Vector{<:Int}, wgt::Vector{<:Real}, N::Int;
+    qs::AbstractArray  # index of each quantile
+)::Nothing
+    # First quantile (it's special because it has no lower bound)
+    _quantile_vecs!(rows, cols, vals, BottomQuantile(), ind_L[1], ind_U[1], wgt[1], N; qs=1)
+    # Middle quantiles
+    for (iq, qq) in zip(2:length(qs)-1, qs[2:end-1])
+        n = ind_U[iq]-ind_L[iq-1]
+        append!(rows, fill(qq, n))
+        append!(cols, ind_U[iq-1]:ind_U[iq])
+        append!(vals, [wgt[iq-1]; ones(Float64, n-2); 1-wgt[iq]])
+    end
+    # Last quantile (it's special because it has no upper bound)
+    _quantile_vecs!(rows, cols, vals, TopQuantile(), ind_L[end], ind_U[end], wgt[end], N; qs=qs[end])
+    return nothing
+end
+function _quantile_vecs!(
+    rows::Vector{<:Int}, cols::Vector{<:Int}, vals::Vector{<:Real},
+    ::TopQuantile, ::Any, ind_U, wgt, N::Int;
+    qs  # index of each quantile
+)::Nothing
+    for (iq, qq) in pairs(qs)
+        n = N-ind_U[iq]+1
+        append!(rows, fill(qq, n))
+        append!(cols, ind_U[iq]:N)
+        append!(vals, [wgt[iq]; ones(Float64, n-1)])
+    end
+    return nothing
+end
+function _quantile_vecs!(
+    rows::Vector{<:Int}, cols::Vector{<:Int}, vals::Vector{<:Real},
+    ::BottomQuantile, ::Any, ind_U, wgt, ::Int;
+    qs  # index of each quantile
+)::Nothing
+    for (iq, qq) in pairs(qs)
+        n = ind_U[iq]
+        append!(rows, fill(qq, n))
+        append!(cols, 1:n)
+        append!(vals, [ones(Float64, n-1); 1-wgt[iq]])
+    end
+    return nothing
+end
+
+# Function to assign individuals to quantiles and return vectors with
+# indexes and values
+# 1. General functions
+function quantile_vecs!(
+    rows::Vector{<:Int}, cols::Vector{<:Int}, vals::Vector{<:Real},
+    qtype::QuantileType, divs::Vector{<:Real}, cum_distr::Vector{<:Real};
+    qs=get_qs(qtype, divs)
+)::Nothing
+    # Find frontiers and weights
+    ind_L, ind_U, wgt = get_weights(Extrapolate(), divs, cum_distr)
+    # Assign quantiles
+    _quantile_vecs!(rows, cols, vals, qtype, ind_L, ind_U, wgt, size(cum_distr,1); qs)
+    return nothing
+end
+function quantile_vecs(
+    qtype::QuantileType, divs::Vector{<:Real}, cum_distr::Vector{<:Real};
+    kwargs...
+)
+    # Preliminaries
+    rows = Int[]
+    cols = Int[]
+    vals = Float64[]
+    quantile_vecs!(rows, cols, vals, qtype, divs, cum_distr; kwargs...)
+    return rows, cols, vals
+end
+
 # Matrix to help with the computation of quantiles
-function quantile_matrix(divs::Vector{<:Real}, var::Vector{<:Real}, distr::Vector{<:Real})::SparseMatrixCSC
-    nq = size(divs,1)
+function quantile_matrix(
+    divs::Vector{<:Real}, var::Vector{<:Real}, distr::Vector{<:Real};
+    qtype::QuantileType=BasicQuantile()
+)::SparseMatrixCSC
+    nq = size(divs,1)+1
     # Rank nodes from lower to higher values
     iSort = sortperm(var)
     # Cumulative distribution
     sorted_distr = distr[iSort]
     cum_distr = cumsum(sorted_distr) / sum(sorted_distr)
     # Matrix with indicators of quantiles
-
+    rows, cols, vals = quantile_vecs(qtype, divs, cum_distr)
     # Recover the original order
     return sparse(rows, iSort[cols], vals, nq, size(var,1))
 end
+function quantile_matrix(
+    vecvec_divs::Vector{<:Vector{<:Real}}, var::Vector{<:Real}, distr::Vector{<:Real};
+    qtypes::Vector{<:QuantileType}
+)::SparseMatrixCSC
+    # Preliminaries
+    current_q = 1
+    rows = Int[]
+    cols = Int[]
+    vals = Float64[]
+    # Rank nodes from lower to higher values
+    iSort = sortperm(var)
+    # Cumulative distribution
+    sorted_distr = distr[iSort]
+    cum_distr = cumsum(sorted_distr) / sum(sorted_distr)
+    # Matrix with indicators of quantiles
+    for (divs, qtype) in zip(vecvec_divs, qtypes)
+        # Update quantile indexes
+        qs=get_qs(qtype, divs; current_q)
+        current_q += size(qs,1)
+        # Get quantile vectors
+        quantile_vecs!(rows, cols, vals, qtype, divs, cum_distr; qs)
+    end
+    # Recover the original order
+    return sparse(rows, iSort[cols], vals)
+end
 # Method to get nq equally-sized quantiles:
 function quantile_matrix(nq::Int, args...)::SparseMatrixCSC
-    divs = range(0,1;length=nq+1)[2:end] |> collect
+    divs = range(0,1;length=nq+1)[2:end-1] |> collect
     return quantile_matrix(divs, args...)
 end
 
@@ -99,7 +211,7 @@ end
 
 # Computing quantiles: shares
 function get_quants(
-    quantmat::AbstractArray, var::Vector{<:Real}, distr::Vector{<:Real}, keyvar::Symbol;
+    quantmat::SparseMatrixCSC, var::Vector{<:Real}, distr::Vector{<:Real}, keyvar::Symbol;
     labels::Vector{<:String}=default_labels(quantmat,distr),
     desc::String="Share of total $(get_var_string(keyvar)) by quantile"
 )
@@ -107,8 +219,13 @@ function get_quants(
                      quantmat*(var .* distr) / dot(var,distr),
                      labels, keyvar, desc)
 end
-function get_quants(arg_divs, var::Vector{<:Real}, distr::Vector{<:Real}, args...; kwargs...)
-    return get_quants(quantile_matrix(arg_divs, var, distr), var, distr, args...; kwargs...)
+function get_quants(
+    arg_divs, var::Vector{<:Real}, distr::Vector{<:Real}, args...;
+    quantmat_kwargs::Dict{Symbol,<:Any}=Dict(),
+    kwargs...
+)
+    return get_quants(  quantile_matrix(arg_divs, var, distr; quantmat_kwargs...),
+                        var, distr, args...; kwargs...)
 end
 
 # Computing quantiles: means
@@ -121,8 +238,13 @@ function get_avg_quants(
                      quantmat*(var .* distr) ./ (quantmat*distr),
                      labels, keyvar, desc)
 end
-function get_avg_quants(arg_divs, var::Vector{<:Real}, distr::Vector{<:Real}, args...; kwargs...)
-    return get_avg_quants(quantile_matrix(arg_divs, var, distr), var, distr, args...; kwargs...)
+function get_avg_quants(
+    arg_divs, var::Vector{<:Real}, distr::Vector{<:Real}, args...;
+    quantmat_kwargs::Dict{Symbol,<:Any}=Dict(),
+    kwargs...
+)
+    return get_avg_quants(  quantile_matrix(arg_divs, var, distr; quantmat_kwargs...),
+                            var, distr, args...; kwargs...)
 end
 
 
@@ -144,14 +266,19 @@ function ss_summarise(eco::Economía, her::Herramientas)
         pct_bconstr = get_pct_borrowing_constrained(distr, her)
     )
 end
-function ss_distributional_analysis(eco::Economía; nq::Int=5)
+function ss_distributional_analysis(eco::Economía; nq::Int=5, top=0.1)
     @unpack hh, distr, pr = eco
     @unpack a, z = hh.S
+    # Preliminaries
+    labs = [["Q$(i)" for i in 1:nq]; "T$(round(Int,100*top))"]
+    divs = [range(0,1;length=nq+1)[2:end-1] |> collect,
+            [1-top]]
+    qtypes = [BasicQuantile(), TopQuantile()]
     # Quantile computation
-    quantiles_inc = get_quants( nq, pr.w*z, distr, :incL;
-                                labels=["Q$(i)" for i in 1:nq])
-    quantiles_wth = get_quants( nq, a, distr, :a;
-                                labels=["Q$(i)" for i in 1:nq])
+    quantiles_inc = get_quants( divs, pr.w*z, distr, :incL;
+                                quantmat_kwargs=Dict(:qtypes=>qtypes), labels=labs)
+    quantiles_wth = get_quants( divs, a, distr, :a;
+                                quantmat_kwargs=Dict(:qtypes=>qtypes), labels=labs)
     # Print results
     return [quantiles_inc, quantiles_wth]
 end

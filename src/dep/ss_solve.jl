@@ -179,7 +179,7 @@ function decision_mat(
     pol_x::Vector{<:Real}, malla_x; metodo=Cap()
 )::SparseMatrixCSC
     lower, upper, wgt = get_weights(metodo, pol_x, malla_x)
-    return decision_mat(lower, upper, wgt, size(malla_x,1), length(pol_x))
+    return decision_mat(lower, upper, wgt, length(malla_x), length(pol_x))
 end
 
 

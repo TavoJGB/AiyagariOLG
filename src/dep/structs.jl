@@ -96,6 +96,7 @@ get_CurvedGrid_parameters() = [:N, :curv, :min, :max]
 
 # Grid methods
 Base.size(grid::AbstractGrid) = grid.N
+Base.length(grid::AbstractGrid) = grid.N
 function get_node(grid::AbstractGrid, i::Int)
     return grid.nodes[i]
 end
