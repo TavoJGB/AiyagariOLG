@@ -23,7 +23,7 @@ eco = steady(model_tst...; r_0=0.04);
 @testset "BENCHMARK SIMULATION: Steady State" begin
     ss_test(eco, model_tst.her; tol)
     quantiles_test(eco; tol)
-    @test compare_results(eco, model_tst.her) < tol
+    @test compare_results(eco, model_tst.her; nq=5, top=0.1) < tol
 end
 
 

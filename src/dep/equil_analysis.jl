@@ -221,7 +221,7 @@ function get_quants(
 end
 function get_quants(
     arg_divs, var::Vector{<:Real}, distr::Vector{<:Real}, args...;
-    quantmat_kwargs::Dict{Symbol,<:Any}=Dict(),
+    quantmat_kwargs::Dict=Dict(),
     kwargs...
 )
     return get_quants(  quantile_matrix(arg_divs, var, distr; quantmat_kwargs...),
@@ -266,19 +266,25 @@ function ss_summarise(eco::Economía, her::Herramientas)
         pct_bconstr = get_pct_borrowing_constrained(distr, her)
     )
 end
-function ss_distributional_analysis(eco::Economía; nq::Int=5, top=0.1)
+function ss_distributional_analysis(eco::Economía; nq::Int=5, top::Real=0.0)
     @unpack hh, distr, pr = eco
     @unpack a, z = hh.S
     # Preliminaries
-    labs = [["Q$(i)" for i in 1:nq]; "T$(round(Int,100*top))"]
-    divs = [range(0,1;length=nq+1)[2:end-1] |> collect,
-            [1-top]]
-    qtypes = [BasicQuantile(), TopQuantile()]
+    labs = ["Q$(i)" for i in 1:nq]
+    divs = range(0,1;length=nq+1)[2:end-1] |> collect
+    if 0 < top < 1
+        labs = [labs; "T$(round(Int,100*top))"]
+        divs = [divs, [1-top]]
+        qtypes = [BasicQuantile(), TopQuantile()]
+        quantmat_kwargs=Dict(:qtypes=>qtypes)
+    else
+        quantmat_kwargs=Dict()
+    end
     # Quantile computation
     quantiles_inc = get_quants( divs, pr.w*z, distr, :incL;
-                                quantmat_kwargs=Dict(:qtypes=>qtypes), labels=labs)
+                                quantmat_kwargs, labels=labs)
     quantiles_wth = get_quants( divs, a, distr, :a;
-                                quantmat_kwargs=Dict(:qtypes=>qtypes), labels=labs)
+                                quantmat_kwargs, labels=labs)
     # Print results
     return [quantiles_inc, quantiles_wth]
 end
