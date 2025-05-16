@@ -277,39 +277,3 @@ function subset_namedtuple(nt::NamedTuple, substr::String; typesubstr::String="P
     newvals = values(subset)
     return NamedTuple(newkeys .=> newvals)
 end
-
-
-
-#===========================================================================
-    IDENTIFICATION OF AGENTS
-===========================================================================#
-
-function identify_group(var::Vector{<:Real}, crit::Function)
-    return crit.(var)
-end
-function identify_group(var::Vector{<:Real}, crit::Int)
-    return identify_group(var, x -> x.==crit)
-end
-function identify_group(her::Herramientas, keyvar::Symbol, crit::Function)
-    @unpack states, ind = her
-    return crit.(states[:, ind[keyvar]])
-end
-function identify_group(her::Herramientas, keyvar::Symbol, crit::Int)
-    return identify_group(her, keyvar, x -> x.==crit)
-end
-function identify_group(G::PolicyFunctions, keyvar::Symbol, crit::Function)
-    return crit.(getproperty(G, keyvar))
-end
-
-# Borrowing contrained agents: end-of-period assets
-function get_borrowing_constrained(a′, min_a)
-    return a′ .<= min_a
-end
-function get_borrowing_constrained(eco::Economía, her::Herramientas)
-    return get_borrowing_constrained(eco.hh.G.a′, her.grid_a.min)
-end
-
-# Borrowing contrained agents: beggining-of-period assets
-function get_borrowing_constrained(her::Herramientas)
-    return identify_group(her, :a, 1)
-end

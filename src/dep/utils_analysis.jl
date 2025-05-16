@@ -1,4 +1,40 @@
 #===========================================================================
+    IDENTIFICATION OF AGENTS
+===========================================================================#
+
+function identify_group(var::Vector{<:Real}, crit::Function)
+    return crit.(var)
+end
+function identify_group(var::Vector{<:Real}, crit::Int)
+    return identify_group(var, x -> x.==crit)
+end
+function identify_group(her::Herramientas, keyvar::Symbol, crit::Function)
+    @unpack states, ind = her
+    return crit.(states[:, ind[keyvar]])
+end
+function identify_group(her::Herramientas, keyvar::Symbol, crit::Int)
+    return identify_group(her, keyvar, x -> x.==crit)
+end
+function identify_group(G::PolicyFunctions, keyvar::Symbol, crit::Function)
+    return crit.(getproperty(G, keyvar))
+end
+
+# Borrowing contrained agents: end-of-period assets
+function get_borrowing_constrained(a′, min_a)
+    return a′ .<= min_a
+end
+function get_borrowing_constrained(eco::Economía, her::Herramientas)
+    return get_borrowing_constrained(eco.hh.G.a′, her.grid_a.min)
+end
+
+# Borrowing contrained agents: beggining-of-period assets
+function get_borrowing_constrained(her::Herramientas)
+    return identify_group(her, :a, 1)
+end
+
+
+
+#===========================================================================
     MARGINAL PROPENSITIES
 ===========================================================================#
 
@@ -250,115 +286,6 @@ end
 
 
 #===========================================================================
-    SUMMARISE RESULTS
-===========================================================================#
-
-function ss_summarise(eco::Economía, her::Herramientas)
-    agg = Aggregates(eco)
-    @unpack K, C, Y = agg
-    @unpack hh, distr = eco
-    return (;
-        r = Stat(Percentage(), eco.pr.r, :r, "Real interest rate"),
-        ratio_KY = Stat(Share(), K/Y, :K, "Capital to GDP"),
-        ratio_CY = Stat(Share(), C/Y, :c, "Consumption to GDP"),
-        mean_mpc = get_average_mpc(eco, her),
-        gini_a = Gini(hh.S.a, distr, :a; desc="Assets Gini"),
-        pct_bconstr = get_pct_borrowing_constrained(distr, her)
-    )
-end
-function ss_distributional_analysis(eco::Economía; nq::Int=5, top::Real=0.0)
-    @unpack hh, distr, pr = eco
-    @unpack a, z = hh.S
-    # Preliminaries
-    labs = ["Q$(i)" for i in 1:nq]
-    divs = range(0,1;length=nq+1)[2:end-1] |> collect
-    if 0 < top < 1
-        labs = [labs; "T$(round(Int,100*top))"]
-        divs = [divs, [1-top]]
-        qtypes = [BasicQuantile(), TopQuantile()]
-        quantmat_kwargs=Dict(:qtypes=>qtypes)
-    else
-        quantmat_kwargs=Dict()
-    end
-    # Quantile computation
-    quantiles_inc = get_quants( divs, pr.w*z, distr, :incL;
-                                quantmat_kwargs, labels=labs)
-    quantiles_wth = get_quants( divs, a, distr, :a;
-                                quantmat_kwargs, labels=labs)
-    # Print results
-    return [quantiles_inc, quantiles_wth]
-end
-
-
-
-#===========================================================================
-    FORMATTING RESULTS
-===========================================================================#
-
-fmt(x::Stat{<:StatisticType}; digits::Int=2) = string(round(x.value, digits=digits))
-function fmt(::Percentage, x::Real; digits::Int=2)
-    if digits==0
-        return string(round(Int, 100*x)) * " %"
-    else
-        return string(round(100*x, digits=digits)) * " %"
-    end
-end
-fmt(x::Stat{<:Percentage}; digits::Int=2) = fmt(Percentage(), x.value; digits=digits)
-Base.string(x::AbstractStatistic) = string(x.desc) * ": \t" * fmt(x)
-
-
-
-#===========================================================================
-    SHOW RESULTS
-===========================================================================#
-
-# Print summary
-function Base.show(xs::NamedTuple{<:Any, <:Tuple{Vararg{Stat}}})::Nothing
-    for stat in values(xs)
-        println("- ", string(stat))
-    end
-    return nothing
-end
-
-# Print distributional analysis
-function Base.show(x::StatDistr{Ts}) where {Ts<:StatisticType}
-    println(string(x.desc) * ":")
-    for (val, lab) in zip(x)
-        println("\t ", lab, ": ", fmt(Ts(), val))
-    end
-end
-function Base.show(xs::Vector{<:StatDistr{Ts}}) where {Ts<:StatisticType}
-    header = [""; xs[1].labels...]
-    ncol = size(xs[1])+1
-    data = Matrix{String}(undef, length(xs), ncol)
-    for (i,x) in pairs(xs)
-        data[i,:] .= [x.desc; fmt.(Ref(Ts()), x.values; digits=0)...]
-    end
-    pretty_table(data; header, alignment=[:l; fill(:c, ncol-1)])
-end
-
-# Main function
-function ss_analysis(eco::Economía, her::Herramientas;
-                     save_results::Bool=true,   # by default, save results in file
-                     filepath = BASE_FOLDER * "/Simulations/results/latest_simulation.csv",
-                     kwargs...)::Nothing
-    println("\nSTEADY STATE ANALYSIS")
-    # Summary
-    println("\nSummary")
-    ss_summ = ss_summarise(eco, her)
-    show(ss_summ)
-    # Distribution
-    println("\nDistributional analysis: cross-section")
-    ss_distr_cs = ss_distributional_analysis(eco; kwargs...)
-    show(ss_distr_cs)
-    # Export results
-    save_results && export_csv(filepath, exportable([ss_summ; ss_distr_cs]); delim='=')
-    return nothing
-end
-
-
-
-#===========================================================================
     GRAPHS: auxiliary functions
 ===========================================================================#
 
@@ -406,59 +333,54 @@ end
 
 
 #===========================================================================
-    GRAPHS
+    MOBILITY
 ===========================================================================#
 
-function ss_graphs(eco::Economía, her::Herramientas, cfg::GraphConfig)::Nothing
-    # Unpacking
-    @unpack hh, Q, distr = eco
-    @unpack a, z = hh.S
-    @unpack c, a′ = hh.G
-    w = eco.pr.w
-    N_z = size(her.process_z)
-    malla_a = her.grid_a.nodes
-    @unpack figpath=cfg
+# Predict future distribution (method 1): over all the (future) state space
+function future_distribution(
+    distr_0::AbstractVector,    # Initial distribution
+    Q_mat::SparseMatrixCSC,     # Q-transition matrix
+    nt::Int                     # Number of periods ahead
+)
+    # Next-period prospects are just the corresponding rows in Q_mat
+    distr_F = Q_mat * distr_0
+    # Iterate for predictions further in the future
+    for _ = 2:nt
+        distr_F .= Q_mat * distr_F
+    end
+    # Return probability distribution of future prospects
+    return distr_F
+end
 
-    # POLICY FUNCTIONS (by productivity group)
-    # Savings
-    plot_by_group(
-        a, a′, cfg, [1;N_z], her, :z;
-        leglabs=["low z", "high z"], tit="Policy functions: savings"
-    )
-    plot!(malla_a, malla_a, line=(cfg.lwidth, :dot), color=:darkgray, label="a' = a")
-    Plots.savefig(figpath * "ss_apol.png")
-    # Consumption
-    plot_by_group(
-        a, c, cfg, [1;N_z], her, :z;
-        leglabs=["low z", "high z"], tit="Policy functions: consumption")
-    Plots.savefig(figpath * "ss_cpol.png")
+# Predict future distribution (method 2): over given (future) quantiles
+# Equivalent to method 1 if quantmat_nt = sparse(I, size(Q_mat))
+function future_distribution(
+    subgroup::AbstractVector,       # Initial distribution / BitVector indicator of a subgroup of agents
+    Q_mat::SparseMatrixCSC,         # Q-transition matrix
+    nt::Int,                        # Number of periods ahead
+    quantmat_nt::SparseMatrixCSC,   # Quantile matrix nt periods ahead;
+    keyvar::Symbol;                 # Variable of interest
+    labels::Vector{<:String}=default_labels(quantmat_nt,distr),
+    desc::String="Future distribution of $(get_var_string(keyvar)) by quantile",
+    subgroup_label::String="anywhere"
+)
+    return StatFutureDistr( Share(),
+                            quantmat_nt * future_distribution(subgroup, Q_mat, nt),
+                            labels, keyvar, desc, nt, subgroup_label)
+end
 
-    # VALUE FUNCTION (by productivity group)
-    v = get_value(hh, Q)
-    plot_by_group(
-        a, v, cfg, [1;N_z], her, :z;
-        leglabs=["low z", "high z"], tit="Value functions")
-    Plots.savefig(figpath * "ss_value.png")
-
-    # WEALTH DISTRIBUTION (by productivity group)
-    plot_histogram_by_group(
-        a, distr, cfg, [1;N_z], her, :z;
-        leglabs=["low z", "high z"], tit="Asset distribution"
-    )
-    Plots.savefig(figpath * "ss_asset_hist.png")
-    # plot_by_group(
-    #     a, distr, cfg, [1;N_z], her, :z,
-    #     leglabs=["low z", "high z"], tit="Asset distribution")
-    # Plots.savefig(figpath * "ss_asset_distr.png")
-
-    # EULER ERRORS (by productivity group)
-    errs_eu = err_euler(eco)
-    unconstr = .!get_borrowing_constrained(eco, her)
-    errs_labs = repeat([""], N_z)
-    errs_labs[[1,N_z]] .= ["low z", "high z"]
-    plot_by_group(
-        a[unconstr], errs_eu[unconstr], cfg, 1:N_z, her.states[unconstr, her.ind.z];
-        ptype=scatter!, leglabs=errs_labs, tit="Euler Errors")
-    Plots.savefig(figpath * "ss_euler_err.png")
-    return nothing
+# Compute probability of ending up in each given quantile, after nt periods
+function future_probabilities(
+    subgroup::AbstractVector,       # Initial distribution / BitVector indicator of a subgroup of agents
+    Q_mat::SparseMatrixCSC,         # Q-transition matrix
+    nt::Int,                        # Number of periods ahead
+    quantmat_nt::SparseMatrixCSC,   # Quantile matrix nt periods ahead
+    keyvar::Symbol;                 # Variable of interest
+    labels::Vector{<:String}=default_labels(quantmat_nt,distr),
+    desc::String="Probability of reaching each future $(get_var_string(keyvar)) quantile",
+    subgroup_label::String="anywhere"
+)
+    return StatFutureDistr( Probability(),
+                            quantmat_nt * future_distribution(subgroup, Q_mat, nt) / sum(subgroup),
+                            labels, keyvar, desc, nt, subgroup_label)
 end

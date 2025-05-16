@@ -397,28 +397,43 @@ abstract type StatisticType end
 struct Share <:StatisticType end
 struct Percentage <:StatisticType end
 struct Mean <:StatisticType end
+struct Probability <:StatisticType end
 
 abstract type AbstractStatistic end
 struct Stat{Ts<:StatisticType, Ev<:EconomicVariable} <: AbstractStatistic
-    value::Float64
+    value::Real
     desc::String
-    function Stat(::Ts, value::Float64, keyvar::Symbol, desc::String) where {Ts<:StatisticType}
+    function Stat(::Ts, value::Real, keyvar::Symbol, desc::String) where {Ts<:StatisticType}
         new{Ts, get_economic_variable(keyvar)}(value, desc)
     end
 end
 struct StatDistr{Ts<:StatisticType, Ev<:EconomicVariable} <: AbstractStatistic
-    values::Vector{<:Float64}
+    values::Vector{<:Real}
     labels::Vector{<:String}
     desc::String
-    function StatDistr(::Ts, values::Vector{<:Float64}, labels::Vector{<:String}, keyvar::Symbol, desc::String) where {Ts<:StatisticType}
+    function StatDistr(::Ts, values::Vector{<:Real}, labels::Vector{<:String}, keyvar::Symbol, desc::String) where {Ts<:StatisticType}
         new{Ts, get_economic_variable(keyvar)}(values, labels, desc)
+    end
+end
+struct StatFutureDistr{Ts<:StatisticType, Ev<:EconomicVariable} <: AbstractStatistic
+    values::Vector{<:Real}
+    labels::Vector{<:String}
+    desc::String
+    periods::Int
+    initial_group::String
+    function StatFutureDistr(::Ts, values::Vector{<:Real}, labels::Vector{<:String}, keyvar::Symbol, desc::String, periods::Int, initial_group::String) where {Ts<:StatisticType}
+        new{Ts, get_economic_variable(keyvar)}(values, labels, desc, periods, initial_group)
     end
 end
 
 # Methods
 Base.zip(sd::StatDistr{<:StatisticType}) = zip(sd.values, sd.labels)
+Base.zip(sd::StatFutureDistr{<:StatisticType}) = zip(sd.values, sd.labels)
+Base.length(sd::StatDistr{<:StatisticType}) = length(sd.values)
 Base.size(sd::StatDistr{<:StatisticType}) = length(sd.values)
+Base.size(sd::StatFutureDistr{<:StatisticType}) = length(sd.values)
 Base.sum(sd::StatDistr{<:Percentage}) = sum(sd.values)
+Base.sum(sd::StatDistr{<:Probability}) = sum(sd.values)
 get_economic_variable(::Stat{<:StatisticType, Ev}) where {Ev<:EconomicVariable} = Ev
 get_economic_variable(::StatDistr{<:StatisticType, Ev}) where {Ev<:EconomicVariable} = Ev
 get_symbol(::Stat{<:StatisticType, Ev}) where {Ev<:EconomicVariable} = get_symbol(Ev())
