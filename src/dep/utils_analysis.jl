@@ -244,6 +244,12 @@ function default_labels(quantmat::AbstractArray, distr::Vector{<:Real})
     # Get the labels
     return ["P_$(q[i-1])-$(q[i])" for i in ((1:size(quantmat,1)) .+ 1)]
 end
+function default_labels(quantmat::AbstractArray)
+    # Get the quantiles
+    q = range(0,100;length=(1+size(quantmat,1)))
+    # Get the labels
+    return ["P_$(q[i-1])-$(q[i])" for i in ((1:size(quantmat,1)) .+ 1)]
+end
 
 # Computing quantiles: shares
 function get_quants(
@@ -281,6 +287,12 @@ function get_avg_quants(
 )
     return get_avg_quants(  quantile_matrix(arg_divs, var, distr; quantmat_kwargs...),
                             var, distr, args...; kwargs...)
+end
+
+# Matrix with transition probabilities between quantiles in a period
+function quantile_transition_matrix(quant_mat::SparseMatrixCSC, Q::SparseMatrixCSC, distr::Vector{<:Real})
+    quant_distr = quant_mat' .* distr
+    return quant_mat * Q * (quant_distr ./ sum(quant_distr,dims=1))
 end
 
 
@@ -339,19 +351,18 @@ end
 # Predict future distribution (method 1): over all the (future) state space
 function future_distribution(
     distr_0::AbstractVector,    # Initial distribution
-    Q_mat::SparseMatrixCSC,     # Q-transition matrix
+    Q::SparseMatrixCSC,         # Q-transition matrix
     nt::Int                     # Number of periods ahead
 )
-    # Next-period prospects are just the corresponding rows in Q_mat
-    distr_F = Q_mat * distr_0
+    # Next-period prospects are just the corresponding rows in Q
+    distr_F = Q * distr_0
     # Iterate for predictions further in the future
     for _ = 2:nt
-        distr_F .= Q_mat * distr_F
+        distr_F .= Q * distr_F
     end
     # Return probability distribution of future prospects
     return distr_F
 end
-
 # Predict future distribution (method 2): over given (future) quantiles
 # Equivalent to method 1 if quantmat_nt = sparse(I, size(Q_mat))
 function future_distribution(
@@ -368,11 +379,47 @@ function future_distribution(
                             quantmat_nt * future_distribution(subgroup, Q_mat, nt),
                             labels, keyvar, desc, nt, subgroup_label)
 end
+# Alternative method using smaller transition matrix (quantile to quantile transitions), so that it's much faster
+# but inaccurate for small nt (because it does not take into account the distribution of agents within quantiles)
+function future_distribution_fast(
+    subgroup::AbstractVector,       # Initial distribution / BitVector indicator of a subgroup of agents
+    distr::Vector{<:Real},          # Full distribution of agents
+    Q::SparseMatrixCSC,             # Q-transition matrix
+    nt::Int,                        # Number of periods ahead
+    quantmat_nt::SparseMatrixCSC,   # Quantile matrix nt periods ahead
+    keyvar::Symbol;                 # Variable of interest
+    labels::Vector{<:String}=default_labels(quantmat_nt,distr),
+    desc::String="Future distribution of $(get_var_string(keyvar)) by quantile",
+    subgroup_label::String="anywhere"
+)
+    quant_Q = quantile_transition_matrix(quantmat_nt, Q, distr)
+    return StatFutureDistr( Share(),
+                            future_distribution(quantmat_nt * subgroup, quant_Q, nt),
+                            # quantmat_nt * future_distribution(subgroup, Q, nt),
+                            labels, keyvar, desc, nt, subgroup_label)
+end
 
 # Compute probability of ending up in each given quantile, after nt periods
 function future_probabilities(
     subgroup::AbstractVector,       # Initial distribution / BitVector indicator of a subgroup of agents
-    Q_mat::SparseMatrixCSC,         # Q-transition matrix
+    Q::SparseMatrixCSC,             # Q-transition matrix
+    nt::Int,                        # Number of periods ahead
+    quantmat_nt::SparseMatrixCSC,   # Quantile matrix nt periods ahead
+    keyvar::Symbol;                 # Variable of interest
+    labels::Vector{<:String}=default_labels(quantmat_nt),
+    desc::String="Probability of reaching each future $(get_var_string(keyvar)) quantile",
+    subgroup_label::String="anywhere"
+)
+    return StatFutureDistr( Probability(),
+                            quantmat_nt * future_distribution(subgroup, Q, nt) / sum(subgroup),
+                            labels, keyvar, desc, nt, subgroup_label)
+end
+# Alterntive method using smaller transition matrix (quantile to quantile transitions), so that it's much faster
+# but inaccurate for small nt (because it does not take into account the distribution of agents within quantiles)
+function future_probabilities_fast(
+    subgroup::AbstractVector,       # Initial distribution / BitVector indicator of a subgroup of agents
+    distr::Vector{<:Real},          # Full distribution of agents
+    Q::SparseMatrixCSC,             # Q-transition matrix
     nt::Int,                        # Number of periods ahead
     quantmat_nt::SparseMatrixCSC,   # Quantile matrix nt periods ahead
     keyvar::Symbol;                 # Variable of interest
@@ -380,7 +427,8 @@ function future_probabilities(
     desc::String="Probability of reaching each future $(get_var_string(keyvar)) quantile",
     subgroup_label::String="anywhere"
 )
+    quant_Q = quantile_transition_matrix(quantmat_nt, Q, distr)
     return StatFutureDistr( Probability(),
-                            quantmat_nt * future_distribution(subgroup, Q_mat, nt) / sum(subgroup),
+                            future_distribution(quantmat_nt * subgroup, quant_Q, nt) / sum(subgroup),
                             labels, keyvar, desc, nt, subgroup_label)
 end
