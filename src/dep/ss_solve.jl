@@ -57,11 +57,17 @@ function guess_G!(hh::Households, pr::Prices)::Nothing
     return nothing
 end
 
-# EGM: auxiliary functions
-function EGM_savings!(hh::Households, pr::Prices)::Nothing
+# EGM optimization: auxiliary functions
+function EGM_savings!(gg::Generation{<:Oldest}, args...)::Nothing
+    gg.G.a′ .= 0
+    return nothing
+end
+function EGM_savings!(
+    gg::Generation, pr::Prices, c′::Vector{<:Real},
+    pref::Preferencias, process_z::MarkovProcess, grid_a::AbstractGrid
+)::Nothing
     # Unpack
-    @unpack N, pref, S, process_z, grid_a, states = hh
-    c′ = hh.G.c
+    @unpack N, S, states = gg
     malla_a = grid_a.nodes
     # Initialise policy function for savings
     a_EGM = similar(c′)
@@ -76,17 +82,37 @@ function EGM_savings!(hh::Households, pr::Prices)::Nothing
     # Policy function bounds
     @. a_EGM = clamp(a_EGM, grid_a.min, grid_a.max)
     # Update policy function
-    hh.G.a′ = a_EGM
+    gg.G.a′ = a_EGM
     return nothing
 end
-function EGM_consumption!(hh::Households, pr::Prices)::Nothing
-    hh.G.c = budget_constraint(hh.G.a′, pr, hh.S)
+function EGM_consumption!(gg::Generation, pr::Prices)::Nothing
+    gg.G.c = budget_constraint(gg.G.a′, pr, gg.S)
     return nothing
 end
+
 # EGM: one iteration
-function EGM_iter!(hh::Households, pr::Prices)::Nothing
-    EGM_savings!(hh, pr)        # corresponding savings
-    EGM_consumption!(hh, pr)    # update guess
+function EGM_iter!(gg::Generation, pr::Prices, args...)::Nothing
+    EGM_savings!(gg, pr, args...)
+    EGM_consumption!(gg, pr)
+    return nothing
+end
+
+# All households
+function hh_solve!(eco::Economía, cfg::Configuration)::Nothing
+    @unpack hh, fm, pr = eco
+    @unpack gens, pref, process_z, grid_a = hh
+    @unpack cfg_hh, cfg_distr = cfg
+    # Update policy functions for each generation
+    aux_get_guess(gg::Generation) = gg.G.c
+    solve!(cfg_hh, aux_get_guess, gens[end], EGM_iter!, pr)   # last generation
+    for (ig, g) in enumerate(gens[(end-1):-1:1])  # previous generations
+        c′ = gens[ig+1].G.c
+        solve!(cfg_hh, aux_get_guess, g, EGM_iter!, pr, c′, pref, process_z, grid_a)
+    end
+    # Q-transition matrix
+    Q_matrix!(hh)
+    # Stationary distribution
+    distribution!(eco.hh)
     return nothing
 end
 
@@ -106,23 +132,26 @@ function guess_value(hh::Households)
 end
 
 # Value function
-function current_value(c::Vector{<:Real}, pref::Preferencias, Q::AbstractMatrix, v′::Vector{<:Real})
-    @unpack β, u = pref
-    return u.(c) + β * Q' * (v′)
+function value!(gg::Generation{<:Oldest}, pref::Preferencias, args...)::Nothing
+    gg.v .= pref.u.(gg.G.c)
+    return nothing
 end
-function get_value(hh::Households, Q::AbstractMatrix; maxit=1000, tol=1e-6)
-    @unpack pref, G = hh
-    @unpack c = G
-    v′ = guess_value(c, pref)
-    for _=1:maxit
-        v = current_value(c, pref, Q, v′)
-        # Check convergence
-        if maximum(abs.(v′-v)) < tol
-            return v
-        end
-        v′ .= v
+function value!(gg::Generation, pref::Preferencias, v′::Vector{<:Real})::Nothing
+    @unpack G, Q = gg
+    @unpack c = gg.G
+    @unpack β, u = pref
+    gg.v .= u.(c) + β * Q' * (v′)
+    return nothing
+end
+function value!(hh::Households)::Nothing
+    @unpack gens, pref = hh
+    value!(gens[end], pref)
+    for (ig, g) in enumerate(gens[(end-1):-1:1])
+        @unpack v′ = gens[ig+1].v
+        value!(g, pref, v′)
     end
-    error("Value function did not converge")
+    hh.gens = gens
+    return nothing
 end
 
 
@@ -205,13 +234,15 @@ function Q_vecs!(
     return nothing
 end
 
-function Q_matrix(a′::Vector{<:Real}, hh::Households)
+Q_matrix(::Generation{<:Oldest}, args...) = NaN
+function Q_matrix(
+    gg::Generation, states′::StateIndices, Π_z::Matrix{<:Real}, grid_a′::AbstractGrid
+)
     # Preliminaries
+    @unpack a′ = gg.G
+    zz = gg.states.z  # current productivity state
     N = size(a′,1)
-    @unpack grid_a, process_z, states = hh
-    @unpack z = states  # current productivity state
-    Π_z = process_z.Π
-    N_z = size(process_z)
+    N_z = size(Π_z, 1)
     Tr = eltype(Π_z)
     Ti = typeof(N)
     # Initialise sparse matrix and auxiliary vectors
@@ -219,14 +250,57 @@ function Q_matrix(a′::Vector{<:Real}, hh::Households)
     indy_Q = Ti[]        # column index of Q_mat
     vals_Q = Tr[]        # values of Q_mat
     # Auxiliary: decision matrix
-    Π_a′ = decision_mat(a′, grid_a)
+    Π_a′ = decision_mat(a′, grid_a′)
     for z′=1:N_z
-        Q_vecs!(indx_Q, indy_Q, vals_Q,     # vectors that will be appended
-                findall(z.==z′), 1:N,       # rows and columns to fill
-                Π_z[z,z′]' .* Π_a′)         # transition probabilities
+        Q_vecs!(indx_Q, indy_Q, vals_Q,         # vectors that will be appended
+                findall(states′.z .== z′), 1:N, # rows and columns to fill
+                Π_z[zz,z′]' .* Π_a′)             # transition probabilities
     end
     # Build the sparse matrix
     return sparse(indx_Q, indy_Q, vals_Q, N, N)
+end
+function Q_matrix!(gg::Generation, args...)::Nothing
+    gg.Q .= Q_matrix(gg, args...)
+    return nothing
+end
+function Q_matrix!(hh::Households)::Nothing
+    @unpack gens, process_z, grid_a = hh
+    # Compute Q-transition matrix for each generation
+    Q_matrix!(gens[end])
+    for (ig, g) in enumerate(gens[(end-1):-1:1])
+        Q_matrix!(g, gens[ig+1].states, process_z.Π, grid_a)
+    end
+    return nothing    
+end
+
+
+
+#===========================================================================
+    DISTRIBUTION
+===========================================================================#
+
+function distribution!(gg::Generation{<:Newby}, grid_a, process_z, N_g::Int)::Nothing
+    @unpack N, states = gg
+    i0 = findfirst(grid_a.nodes .>= 0)  # assume everyone starts with (almost) zero assets
+    distr = zeros(N) # Initialise distribution
+    distr[states.a .== i0] .= process_z.ss_dist/N_g
+    gg.distr .= distr
+    return nothing
+end
+function distribution!(gg::Generation, prev_distr::Vector{<:Real})::Nothing
+    gg.distr .= gg.Q*prev_distr
+    return nothing
+end
+function distribution!(hh::Households)::Nothing
+    @unpack gens, grid_a, process_z = hh
+    N_g = size(gens,1)
+    # Compute distribution for the youngest generation
+    distribution!(gens[1], grid_a, process_z, N_g)
+    # Compute distribution for the rest of generations
+    for (i_younger, g) in enumerate(gens[2:end])
+        distribution!(g, gens[i_younger].distr)
+    end
+    return nothing
 end
 
 
@@ -234,18 +308,6 @@ end
 #===========================================================================
     GENERAL EQUILIBRIUM
 ===========================================================================#
-
-function hh_solve!(eco::Economía, cfg::Configuration)::Nothing
-    @unpack hh, fm, pr = eco
-    @unpack cfg_hh, cfg_distr = cfg
-    # Update policy functions
-    solve!(cfg_hh, hh::Households -> hh.G.c, hh, EGM_iter!, pr)
-    # Q-transition matrix
-    eco.Q .= Q_matrix(hh.G.a′, hh)
-    # Stationary distribution
-    eco.distr .= solve(cfg_distr, eco.Q)
-    return nothing
-end
 
 function K_market!(r_0::Real, eco::Economía, cfg::Configuration)
     # Update prices

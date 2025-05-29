@@ -65,13 +65,15 @@ function build_model(
     # Grids and processes
     process_z = get_object(pars, "_z"; typesubstr="Suffix")
     grid_a = get_object(pars, "_a"; typesubstr="Suffix")
+    # Life-cycle structures
+    ages = get_ages(; getindex(pars, get_life_cycle_parameters())...)
     # Configuration of solvers
     cfg_r = get_object(pars, "cfg_r_")
     cfg_hh = get_object(pars, "cfg_hh_")
     cfg_distr = get_object(pars, "cfg_distr_")
     cfg_graph = _GraphConfig(; subset_namedtuple(pars, "cfg_graph_")...)
     # Build structures
-    hh = Households(; process_z, grid_a, getindex(pars, get_preference_parameters())...)
+    hh = Households(; ages, process_z, grid_a, getindex(pars, get_preference_parameters())...)
     fm = Firms(; getindex(pars, get_firm_parameters())...)
     cfg = Configuration(cfg_r, cfg_hh, cfg_distr, cfg_graph)
     # Return structures

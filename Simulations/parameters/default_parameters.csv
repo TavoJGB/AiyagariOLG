@@ -14,8 +14,12 @@ tipo_z=DiscreteAR1
 tipo_a=CurvedGrid
 N_a=150
 min_a=0
-max_a=60.0
+max_a=10.0
 curv_a=1/4
+# Life-cycle parameters
+min_age=20
+max_age=90
+years_per_period=5
 # Solver parameters: K market
 cfg_r_tipo=LinearJumps()
 cfg_r_objective="Capital market"

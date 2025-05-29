@@ -181,6 +181,37 @@ mutable struct PolicyFunctions
     end
 end
 
+# Life-cycle structure
+function get_ages(; min_age::Int, max_age::Int, years_per_period::Int)
+    return range(min_age, max_age, step=years_per_period)
+end
+get_life_cycle_parameters() = [:min_age, :max_age, :years_per_period]
+
+
+
+#===========================================================================
+    GROUPS OF AGENTS
+===========================================================================#
+
+abstract type AgentGroup end
+abstract type AbstractGenerationType end
+struct StandardGen <: AbstractGenerationType end
+struct Newby <: AbstractGenerationType end
+struct Oldest <: AbstractGenerationType end
+
+struct Generation{Tg<:AbstractGenerationType} <: AgentGroup
+    age::Int
+    N::Int
+    states::StateIndices
+    S::StateVariables
+    G::PolicyFunctions
+    v::Vector{<:Real}  # Value function
+    # Other
+    Q::SparseMatrixCSC
+    distr::Vector{<:Real}
+end
+Base.size(g::Generation) = g.N
+
 
 
 #===========================================================================
@@ -189,34 +220,48 @@ end
 
 struct Households
     N::Int
+    gens::Vector{Generation}
     pref::Preferencias
-    states::StateIndices
-    S::StateVariables
-    G::PolicyFunctions
     process_z::MarkovProcess
     grid_a::AbstractGrid
     function Households(;
-        tipo_pref, process_z::MarkovProcess, grid_a::AbstractGrid, kwargs...
+        ages::AbstractVector, tipo_pref, process_z::MarkovProcess, grid_a::AbstractGrid, kwargs...
     )
         # Unpack
         grid_z = process_z.grid
+        N_g = length(ages)
         # Matrix of state indices
         states = StateIndices(; N_z=size(process_z), N_a=size(grid_a))
         # Number of agents
-        N = size(states.a, 1)
+        N_in_g = size(states.a, 1)  # in a generation
+        N = N_in_g*N_g              # in total
         # Preferences
         pref = Preferencias(tipo_pref; kwargs...)
+        # Initialise Q-transition matrix
+        Q = spzeros(N_in_g, N_in_g)
+        # Initialise distribution
+        distr = fill(1/N_in_g, N_in_g)
         # State variables
         zz = get_node.(Ref(grid_z), states.z)
         aa = get_node.(Ref(grid_a), states.a)
         S = StateVariables(zz, aa)
-        # Policy functions
-        G = PolicyFunctions(N)
-        return new(N, pref, states, S, G, process_z, grid_a)
+        # Initialise policy functions
+        G = PolicyFunctions(N_in_g)
+        # Initialise value function
+        vv = similar(zz)
+        # Vector of generations
+        gens = [Generation{StandardGen}(age, N_in_g, states, S, G, vv, Q, distr) for age in ages[2:(end-1)]]
+        gens = vcat(Generation{Newby}(ages[1], N_in_g, states, S, G, vv, Q, distr),
+                    gens,
+                    Generation{Oldest}(ages[end], N_in_g, states, S, G, vv, Q, distr))
+        return new(N, gens, pref, process_z, grid_a)
     end
 end
 get_preference_parameters() = [:tipo_pref, :β, :γ]
 grids(hh::Households) = hh.process_z.grid, hh.grid_a
+assemble(x, key::Symbol) = vcat(getproperty.(x, key)...)
+assemble(x, key1::Symbol, key2::Symbol) = assemble(assemble(x, key1), key2)
+# Example: assemble(gens, :states, :z) will return a vector of all z states across generations.
 
 
 
@@ -264,21 +309,12 @@ struct Economía
     fm::Firms
     # Prices
     pr::Prices
-    # Other
-    Q::SparseMatrixCSC
-    distr::Vector{<:Real}
     # Basic initialiser
-    function Economía(r_0::Tr, hh::Households, fm::Firms) where {Tr<:Real}
-        @unpack N = hh
-        # Initialise prices and policy functions
+    function Economía(r_0::Real, hh::Households, fm::Firms)
+        # Initialise prices
         pr = Prices(r_0, get_w(r_0, fm))
-        guess_G!(hh, pr)
-        # Initialise Q-transition matrix
-        Q = spzeros(N, N)
-        # Initialise distribution
-        distr = ones(Tr, N) / N
         # Return the structure
-        return new(hh, fm, pr, Q, distr)
+        return new(hh, fm, pr)
     end
 end
 
@@ -291,10 +327,16 @@ struct Aggregates
     C::Real     # aggregate consumption
     function Aggregates(eco::Economía)
         # Unpack
-        @unpack pr, hh, fm, distr = eco
-        @unpack c, a′ = hh.G
-        @unpack z, a = hh.S
+        @unpack pr, hh, fm = eco
+        @unpack gens = hh
         @unpack ratio_KL, F = fm
+        # Assemble states and policy functions
+        a′ = assemble(gens, :G, :a′)
+        c = assemble(gens, :G, :c)
+        a = assemble(gens, :S, :a)
+        z = assemble(gens, :S, :z)
+        # Distribution
+        distr = assemble(gens, :distr)
         # Households
         A = dot(distr, a′)
         A0 = dot(distr, a)
