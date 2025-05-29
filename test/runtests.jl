@@ -3,10 +3,10 @@ using Plots
 using Test
 
 # Loading main module and dependencies
-using Aiyagari
-import Aiyagari: err_euler, err_budget, get_borrowing_constrained, get_r
-using Aiyagari.LinearAlgebra
-using Aiyagari.Parameters
+using AiyagariOLG
+import AiyagariOLG: err_euler, err_budget, get_borrowing_constrained, get_r
+using AiyagariOLG.LinearAlgebra
+using AiyagariOLG.Parameters
 include("./dep/utils_test.jl")
 include("./dep/ss_test.jl")
 

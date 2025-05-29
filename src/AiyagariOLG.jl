@@ -1,4 +1,4 @@
-module Aiyagari
+module AiyagariOLG
     # Settings
     BASE_FOLDER = dirname(@__DIR__)
 

@@ -1,4 +1,4 @@
-using Aiyagari
+using AiyagariOLG
 
 # Settings
 model = build_model(; N_z=5, N_a=150);
