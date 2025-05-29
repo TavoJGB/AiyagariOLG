@@ -335,6 +335,8 @@ function steady(hh::Households, fm::Firms, cfg::Configuration; r_0)
     eco = Economía(r_0, hh, fm)
     # General equilibrium
     solve!(cfg.cfg_r, r_0, K_market!, eco, cfg)
+    # Update value function
+    value!(eco.hh)
     # Return the steady state economy
     return eco
 end

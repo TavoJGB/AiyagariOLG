@@ -18,18 +18,24 @@ function identify_group(G::PolicyFunctions, keyvar::Symbol, crit::Function)
     return crit.(getproperty(G, keyvar))
 end
 
+abstract type AbstractTiming end
+struct EndOfPeriod <: AbstractTiming end
+struct BeginningOfPeriod <: AbstractTiming end
+
 # Borrowing contrained agents: end-of-period assets
 function get_borrowing_constrained(a′, min_a)
     return a′ .<= min_a
 end
-function get_borrowing_constrained(eco::Economía)
-    @unpack hh = eco
-    return get_borrowing_constrained(hh.G.a′, hh.grid_a.min)
+function get_borrowing_constrained(::EndOfPeriod, hh::Households)
+    @unpack gens, grid_a = hh
+    a′ = assemble(gens, :G, :a′)
+    return get_borrowing_constrained(a′, grid_a.min)
 end
 
 # Borrowing contrained agents: beggining-of-period assets
-function get_borrowing_constrained(states::StateIndices)
-    return identify_group(states, :a, 1)
+function get_borrowing_constrained(::BeginningOfPeriod, hh::Households)
+    @unpack gens = hh
+    return vcat([identify_group(g.states, :a, 1) for g in gens]...)
 end
 
 
@@ -38,28 +44,34 @@ end
     MARGINAL PROPENSITIES
 ===========================================================================#
 
-function get_mpc(eco::Economía)
-    @unpack hh, distr = eco
-    @unpack S, G, process_z, states = hh
+function _get_mpc(c::Vector{<:Real}, a::Vector{<:Real})
+    return diff(c) ./ diff(a)
+end
+function get_mpc(g::Generation, process_z::MarkovProcess)
+    @unpack states = g
+    # Unpack relevant variables
+    @unpack a = g.S
+    @unpack c = g.G
     # Initialise MPC vector
     mpc = Float64[]
     # For each combination of states (other than assets), compute MPCs
     for indZ in eachcol(states.z .== (1:size(process_z))')
-        append!(mpc, _get_mpc(G.c[indZ], S.a[indZ]))
+        append!(mpc, [_get_mpc(c[indZ], a[indZ]); NaN])
     end
     return mpc
 end
-function _get_mpc(c::Vector{<:Real}, a::Vector{<:Real})
-    return diff(c) ./ diff(a)
-end
-function get_average_mpc(eco::Economía; desc::String="Average MPC")
-    @unpack hh, distr = eco
-    mpc = get_mpc(eco)
+function get_average_mpc(hh::Households; desc::String="Average MPC")
+    # Preliminaries
+    @unpack process_z, gens = hh
+    mpc = vcat([get_mpc(g, process_z) for g in gens]...)
+    distr = assemble(gens, :distr)
     # We cannot compute MPC for the richest agent of each combination
     # of states
-    ind_mpc = .!identify_group(hh.states, :a, size(hh.grid_a))
+    ind_mpc = @. !isnan(mpc)
+    mpc = mpc[ind_mpc]
+    distr = distr[ind_mpc]
     # Return weighted average of the MPC (as a share because it's between 0 and 1)
-    return Stat(Share(), dot(distr[ind_mpc], mpc) / sum(distr[ind_mpc]), :c, desc)
+    return Stat(Share(), dot(distr, mpc) / sum(distr), :c, desc)
 end
 
 
@@ -69,11 +81,11 @@ end
 ===========================================================================#
 
 function get_pct_borrowing_constrained(
-    distr::Vector{<:Real}, states::StateIndices;
-    desc::String="% of borrowing-constrained agents"
+    hh::Households;
+    distr=assemble(hh.gens, :distr), desc::String="% of borrowing-constrained agents"
 )
-    return Stat(Percentage(), 
-                sum(distr[get_borrowing_constrained(states)]) / sum(distr),
+    return Stat(Percentage(),
+                sum(distr[get_borrowing_constrained(BeginningOfPeriod(), hh)]) / sum(distr),
                 :a, desc)
 end
 

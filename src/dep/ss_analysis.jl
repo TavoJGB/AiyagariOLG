@@ -5,14 +5,18 @@
 function ss_summarise(eco::Economía)
     agg = Aggregates(eco)
     @unpack K, C, Y = agg
-    @unpack hh, distr = eco
+    @unpack hh = eco
+    # Assemble relevant variables
+    distr = assemble(hh.gens, :distr)
+    a = assemble(hh.gens, :S, :a)
+    # Summarise
     return (;
         r = Stat(Percentage(), eco.pr.r, :r, "Real interest rate"),
         ratio_KY = Stat(Share(), K/Y, :K, "Capital to GDP"),
         ratio_CY = Stat(Share(), C/Y, :c, "Consumption to GDP"),
-        mean_mpc = get_average_mpc(eco),
-        gini_a = Gini(hh.S.a, distr, :a; desc="Assets Gini"),
-        pct_bconstr = get_pct_borrowing_constrained(distr, hh.states)
+        mean_mpc = get_average_mpc(hh),
+        gini_a = Gini(a, distr, :a; desc="Assets Gini"),
+        pct_bconstr = get_pct_borrowing_constrained(hh; distr)
     )
 end
 
@@ -37,12 +41,15 @@ function preliminaries_quantile_matrix(; nq::Int=5, top::Real=0.0)
 end
 
 function ss_distributional_analysis(eco::Economía; kwargs...)
-    @unpack hh, distr, pr = eco
-    @unpack a, z = hh.S
+    @unpack hh, pr = eco
+    # Assemble relevant variables
+    distr = assemble(hh.gens, :distr)
+    lab_inc = pr.w * assemble(hh.gens, :S, :z)
+    a = assemble(hh.gens, :S, :a)
     # Preliminaries
     divs, labs, quantmat_kwargs = preliminaries_quantile_matrix(; kwargs...)
     # Quantile computation
-    quantiles_inc = get_quants( divs, pr.w*z, distr, :incL;
+    quantiles_inc = get_quants( divs, lab_inc, distr, :incL;
                                 quantmat_kwargs, labels=labs)
     quantiles_wth = get_quants( divs, a, distr, :a;
                                 quantmat_kwargs, labels=labs)
@@ -54,8 +61,11 @@ function ss_mobility(eco::Economía;
     nt::Int,    # number of periods ahead in the future
     nq::Int=5
 )
-    @unpack distr, Q, hh, pr = eco
-    @unpack a, z = hh.S
+    @unpack hh, pr = eco
+    # Assemble relevant variables
+    distr = assemble(hh.gens, :distr)
+    a = assemble(hh.gens, :S, :a)
+    z = assemble(hh.gens, :S, :z)
     # Preliminaries
     labs = ["Q$(i)" for i in 1:nq]
     # Income mobility: prospects for the bottom and top labour income quintiles
@@ -161,10 +171,10 @@ function ss_analysis(eco::Economía;
     ss_distr_cs = ss_distributional_analysis(eco; kwargs...)
     show(ss_distr_cs)
     # Distribution
-    println("\nDistributional analysis: mobility")
-    ss_mob = ss_mobility(eco; nt=10, nq=5)
-    show(ss_mob.mob_incL)
-    show(ss_mob.mob_a)
+    # println("\nDistributional analysis: mobility")
+    # ss_mob = ss_mobility(eco; nt=10, nq=5)
+    # show(ss_mob.mob_incL)
+    # show(ss_mob.mob_a)
     # Export results
     save_results && export_csv(filepath, exportable([ss_summ; ss_distr_cs]); delim='=')
     return nothing
@@ -177,14 +187,20 @@ end
 ===========================================================================#
 
 function ss_graphs(eco::Economía, cfg::GraphConfig)::Nothing
+    # PRELIMINARIES
     # Unpacking
-    @unpack hh, Q, distr = eco
-    @unpack states = hh
-    @unpack a, z = hh.S
-    @unpack c, a′ = hh.G
+    @unpack hh, gens = eco
+    @unpack states, process_z, grid_a = hh
     w = eco.pr.w
-    N_z = size(hh.process_z)
-    malla_a = hh.grid_a.nodes
+    # Assemble states and policy functions
+    a′ = assemble(gens, :G, :a′)
+    c = assemble(gens, :G, :c)
+    a = assemble(gens, :S, :a)
+    # Distribution
+    distr = assemble(gens, :distr)
+    # Other
+    N_z = size(process_z)
+    malla_a = grid_a.nodes
     @unpack figpath=cfg
 
     # POLICY FUNCTIONS (by productivity group)
