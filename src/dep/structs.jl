@@ -136,41 +136,7 @@ get_node(mkv::MarkovProcess, i::Int) = get_node(mkv.grid, i)
 
 
 #===========================================================================
-    TOOLS
-===========================================================================#
-
-# Matrix of state variables
-function state_matrix(N_z::Ti, N_a::Ti, ind::NamedTuple) where {Ti<:Integer}
-    # Initialise matrix
-    states = Matrix{Ti}(undef, N_a*N_z, 2)
-    # Fill it
-    states[:,ind.z] = kron(1:N_z, ones(N_a))
-    states[:,ind.a] = repeat(1:N_a, N_z)
-    # Return it
-    return states
-end
-
-# Main structure
-struct Herramientas
-    # State variables
-    process_z::MarkovProcess
-    grid_a::AbstractGrid
-    states::Matrix{<:Real}
-    ind::NamedTuple
-    function Herramientas(; process_z::MarkovProcess, grid_a::AbstractGrid)
-        ind = (z=1, a=2)
-        states = state_matrix(size(process_z), size(grid_a), ind)
-        return new(process_z, grid_a, states, ind)
-    end
-end
-
-# Methods
-grids(her::Herramientas) = her.process_z.grid, her.grid_a
-
-
-
-#===========================================================================
-    HOUSEHOLDS
+    AGENTS: AUXILIARY
 ===========================================================================#
 
 # Preferences
@@ -181,11 +147,20 @@ struct Preferencias{TP<:TipoPreferencias}
     u::Function         # Utility function
     u′::Function        # Marginal utility
     inv_u′::Function    # Inverse marginal utility
-    function Preferencias(::CRRA, β::Real, γ::Real)
+    function Preferencias(::CRRA; β::Real, γ::Real)
         u = c::Real -> (γ ≈ 1.0) ? log(c) : c^(1.0-γ) / (1.0-γ)
         u′ = c::Real -> c^(-γ)
         inv_u′ = (u′) -> u′^(-1.0/γ)
         return new{CRRA}(β, u, u′, inv_u′)
+    end
+end
+
+# State Indicex
+struct StateIndices
+    z::Vector{<:Int}
+    a::Vector{<:Int}
+    function StateIndices(; N_z::Ti, N_a::Ti) where {Ti<:Integer}
+        return new(kron(1:N_z, ones(Ti, N_a)), repeat(1:N_a, N_z))
     end
 end
 
@@ -206,30 +181,42 @@ mutable struct PolicyFunctions
     end
 end
 
-# Main structure
+
+
+#===========================================================================
+    HOUSEHOLDS
+===========================================================================#
+
 struct Households
     N::Int
     pref::Preferencias
+    states::StateIndices
     S::StateVariables
     G::PolicyFunctions
-    function Households(her::Herramientas; tipo_pref, β::Real, γ::Real)
+    process_z::MarkovProcess
+    grid_a::AbstractGrid
+    function Households(;
+        tipo_pref, process_z::MarkovProcess, grid_a::AbstractGrid, kwargs...
+    )
         # Unpack
-        @unpack states, ind = her
-        grid_z, grid_a = grids(her)
+        grid_z = process_z.grid
+        # Matrix of state indices
+        states = StateIndices(; N_z=size(process_z), N_a=size(grid_a))
         # Number of agents
-        N = size(states, 1)
+        N = size(states.a, 1)
         # Preferences
-        pref = Preferencias(tipo_pref, β, γ)
+        pref = Preferencias(tipo_pref; kwargs...)
         # State variables
-        zz = get_node.(Ref(grid_z), states[:, ind.z])
-        aa = get_node.(Ref(grid_a), states[:, ind.a])
+        zz = get_node.(Ref(grid_z), states.z)
+        aa = get_node.(Ref(grid_a), states.a)
         S = StateVariables(zz, aa)
         # Policy functions
         G = PolicyFunctions(N)
-        return new(N, pref, S, G)
+        return new(N, pref, states, S, G, process_z, grid_a)
     end
 end
-get_household_parameters() = [:tipo_pref, :β, :γ]
+get_preference_parameters() = [:tipo_pref, :β, :γ]
+grids(hh::Households) = hh.process_z.grid, hh.grid_a
 
 
 

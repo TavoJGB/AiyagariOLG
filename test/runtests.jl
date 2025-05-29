@@ -21,9 +21,9 @@ model_tst = build_model("../Simulations/parameters/test_parameters.csv"; save_pa
 eco = steady(model_tst...; r_0=0.04);
 # Testing
 @testset "BENCHMARK SIMULATION: Steady State" begin
-    ss_test(eco, model_tst.her; tol)
+    ss_test(eco; tol)
     quantiles_test(eco; tol)
-    @test compare_results(eco, model_tst.her; nq=5, top=0.1) < tol
+    @test compare_results(eco; nq=5, top=0.1) < tol
 end
 
 
@@ -34,6 +34,6 @@ model_last = build_model("../Simulations/parameters/latest_simulation.csv"; save
 eco = steady(model_last...; r_0=0.04);
 # Testing
 @testset "LATEST SIMULATION: Steady State" begin
-    ss_test(eco, model_last.her; tol)
+    ss_test(eco; tol)
     quantiles_test(eco; tol)
 end

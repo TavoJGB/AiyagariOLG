@@ -58,11 +58,10 @@ function guess_G!(hh::Households, pr::Prices)::Nothing
 end
 
 # EGM: auxiliary functions
-function EGM_savings!(hh::Households, pr::Prices, her::Herramientas)::Nothing
+function EGM_savings!(hh::Households, pr::Prices)::Nothing
     # Unpack
-    @unpack N, pref, S = hh
+    @unpack N, pref, S, process_z, grid_a, states = hh
     c′ = hh.G.c
-    @unpack process_z, grid_a, states, ind = her
     malla_a = grid_a.nodes
     # Initialise policy function for savings
     a_EGM = similar(c′)
@@ -71,7 +70,7 @@ function EGM_savings!(hh::Households, pr::Prices, her::Herramientas)::Nothing
     a_imp = a_budget(pr, c_imp, S)
     # Invert to get policy function for savings
     for zz=1:size(process_z)
-        ind_z = (states[:, ind.z].==zz)
+        ind_z = (states.z .== zz)
         a_EGM[ind_z] = interpLinear(malla_a, a_imp[ind_z], malla_a)
     end
     # Policy function bounds
@@ -85,9 +84,9 @@ function EGM_consumption!(hh::Households, pr::Prices)::Nothing
     return nothing
 end
 # EGM: one iteration
-function EGM_iter!(hh::Households, pr::Prices, her::Herramientas)::Nothing
-    EGM_savings!(hh, pr, her)           # corresponding savings
-    EGM_consumption!(hh, pr)            # update guess
+function EGM_iter!(hh::Households, pr::Prices)::Nothing
+    EGM_savings!(hh, pr)        # corresponding savings
+    EGM_consumption!(hh, pr)    # update guess
     return nothing
 end
 
@@ -206,10 +205,11 @@ function Q_vecs!(
     return nothing
 end
 
-function Q_matrix(a′::Vector{<:Real}, her::Herramientas)
+function Q_matrix(a′::Vector{<:Real}, hh::Households)
     # Preliminaries
     N = size(a′,1)
-    @unpack grid_a, process_z, states, ind = her
+    @unpack grid_a, process_z, states = hh
+    @unpack z = states  # current productivity state
     Π_z = process_z.Π
     N_z = size(process_z)
     Tr = eltype(Π_z)
@@ -221,7 +221,6 @@ function Q_matrix(a′::Vector{<:Real}, her::Herramientas)
     # Auxiliary: decision matrix
     Π_a′ = decision_mat(a′, grid_a)
     for z′=1:N_z
-        z = states[:,ind.z]                 # current productivity state
         Q_vecs!(indx_Q, indy_Q, vals_Q,     # vectors that will be appended
                 findall(z.==z′), 1:N,       # rows and columns to fill
                 Π_z[z,z′]' .* Π_a′)         # transition probabilities
@@ -236,24 +235,24 @@ end
     GENERAL EQUILIBRIUM
 ===========================================================================#
 
-function hh_solve!(eco::Economía, her::Herramientas, cfg::Configuration)::Nothing
+function hh_solve!(eco::Economía, cfg::Configuration)::Nothing
     @unpack hh, fm, pr = eco
     @unpack cfg_hh, cfg_distr = cfg
     # Update policy functions
-    solve!(cfg_hh, hh::Households -> hh.G.c, hh, EGM_iter!, pr, her)
+    solve!(cfg_hh, hh::Households -> hh.G.c, hh, EGM_iter!, pr)
     # Q-transition matrix
-    eco.Q .= Q_matrix(hh.G.a′, her)
+    eco.Q .= Q_matrix(hh.G.a′, hh)
     # Stationary distribution
     eco.distr .= solve(cfg_distr, eco.Q)
     return nothing
 end
 
-function K_market!(r_0::Real, eco::Economía, her::Herramientas, cfg::Configuration)
+function K_market!(r_0::Real, eco::Economía, cfg::Configuration)
     # Update prices
     eco.pr.r = r_0
     update_w!(eco.pr, eco.fm)
     # Update households
-    hh_solve!(eco, her, cfg)
+    hh_solve!(eco, cfg)
     # Compute aggregates
     agg = Aggregates(eco)
     @unpack A, K, L = agg
@@ -269,11 +268,11 @@ end
     STEADY STATE
 ===========================================================================#
 
-function steady(hh::Households, fm::Firms, her::Herramientas, cfg::Configuration; r_0)
+function steady(hh::Households, fm::Firms, cfg::Configuration; r_0)
     # Initialise economy
     eco = Economía(r_0, hh, fm)
     # General equilibrium
-    solve!(cfg.cfg_r, r_0, K_market!, eco, her, cfg)
+    solve!(cfg.cfg_r, r_0, K_market!, eco, cfg)
     # Return the steady state economy
     return eco
 end

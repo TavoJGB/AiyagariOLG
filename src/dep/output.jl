@@ -54,10 +54,10 @@ function compare_results(vec_filepaths::Vector{<:String})
     vec_results = import_csv.(vec_filepaths)
     return compare_results(vec_results)
 end
-function compare_results(eco::Economía, her::Herramientas;
+function compare_results(eco::Economía;
                          compfilepath::String=BASE_FOLDER * "/Simulations/results/test_simulation.csv",
                          kwargs...)
-    vec_results = [ exportable([ss_summarise(eco, her), ss_distributional_analysis(eco; kwargs...)]),
+    vec_results = [ exportable([ss_summarise(eco), ss_distributional_analysis(eco; kwargs...)]),
                     import_csv(compfilepath) ]
     return compare_results(vec_results)
 end

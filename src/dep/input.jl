@@ -71,10 +71,9 @@ function build_model(
     cfg_distr = get_object(pars, "cfg_distr_")
     cfg_graph = _GraphConfig(; subset_namedtuple(pars, "cfg_graph_")...)
     # Build structures
-    her = Herramientas(; process_z, grid_a)
-    hh = Households(her; getindex(pars, get_household_parameters())...)
+    hh = Households(; process_z, grid_a, getindex(pars, get_preference_parameters())...)
     fm = Firms(; getindex(pars, get_firm_parameters())...)
     cfg = Configuration(cfg_r, cfg_hh, cfg_distr, cfg_graph)
     # Return structures
-    return (; hh, fm, her, cfg)
+    return (; hh, fm, cfg)
 end

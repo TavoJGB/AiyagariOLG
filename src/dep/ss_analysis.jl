@@ -2,7 +2,7 @@
     SUMMARISE RESULTS
 ===========================================================================#
 
-function ss_summarise(eco::Economía, her::Herramientas)
+function ss_summarise(eco::Economía)
     agg = Aggregates(eco)
     @unpack K, C, Y = agg
     @unpack hh, distr = eco
@@ -10,9 +10,9 @@ function ss_summarise(eco::Economía, her::Herramientas)
         r = Stat(Percentage(), eco.pr.r, :r, "Real interest rate"),
         ratio_KY = Stat(Share(), K/Y, :K, "Capital to GDP"),
         ratio_CY = Stat(Share(), C/Y, :c, "Consumption to GDP"),
-        mean_mpc = get_average_mpc(eco, her),
+        mean_mpc = get_average_mpc(eco),
         gini_a = Gini(hh.S.a, distr, :a; desc="Assets Gini"),
-        pct_bconstr = get_pct_borrowing_constrained(distr, her)
+        pct_bconstr = get_pct_borrowing_constrained(distr, hh.states)
     )
 end
 
@@ -147,14 +147,14 @@ end
 
 
 # Main function
-function ss_analysis(eco::Economía, her::Herramientas;
+function ss_analysis(eco::Economía;
                      save_results::Bool=true,   # by default, save results in file
                      filepath = BASE_FOLDER * "/Simulations/results/latest_simulation.csv",
                      kwargs...)::Nothing
     println("\nSTEADY STATE ANALYSIS")
     # Summary
     println("\nSummary")
-    ss_summ = ss_summarise(eco, her)
+    ss_summ = ss_summarise(eco)
     show(ss_summ)
     # Distribution
     println("\nDistributional analysis: cross-section")
@@ -176,55 +176,56 @@ end
     GRAPHS
 ===========================================================================#
 
-function ss_graphs(eco::Economía, her::Herramientas, cfg::GraphConfig)::Nothing
+function ss_graphs(eco::Economía, cfg::GraphConfig)::Nothing
     # Unpacking
     @unpack hh, Q, distr = eco
+    @unpack states = hh
     @unpack a, z = hh.S
     @unpack c, a′ = hh.G
     w = eco.pr.w
-    N_z = size(her.process_z)
-    malla_a = her.grid_a.nodes
+    N_z = size(hh.process_z)
+    malla_a = hh.grid_a.nodes
     @unpack figpath=cfg
 
     # POLICY FUNCTIONS (by productivity group)
     # Savings
     plot_by_group(
-        a, a′, cfg, [1;N_z], her, :z;
+        a, a′, cfg, [1;N_z], states, :z;
         leglabs=["low z", "high z"], tit="Policy functions: savings"
     )
     plot!(malla_a, malla_a, line=(cfg.lwidth, :dot), color=:darkgray, label="a' = a")
     Plots.savefig(figpath * "ss_apol.png")
     # Consumption
     plot_by_group(
-        a, c, cfg, [1;N_z], her, :z;
+        a, c, cfg, [1;N_z], states, :z;
         leglabs=["low z", "high z"], tit="Policy functions: consumption")
     Plots.savefig(figpath * "ss_cpol.png")
 
     # VALUE FUNCTION (by productivity group)
     v = get_value(hh, Q)
     plot_by_group(
-        a, v, cfg, [1;N_z], her, :z;
+        a, v, cfg, [1;N_z], states, :z;
         leglabs=["low z", "high z"], tit="Value functions")
     Plots.savefig(figpath * "ss_value.png")
 
     # WEALTH DISTRIBUTION (by productivity group)
     plot_histogram_by_group(
-        a, distr, cfg, [1;N_z], her, :z;
+        a, distr, cfg, [1;N_z], states, :z;
         leglabs=["low z", "high z"], tit="Asset distribution"
     )
     Plots.savefig(figpath * "ss_asset_hist.png")
     # plot_by_group(
-    #     a, distr, cfg, [1;N_z], her, :z,
+    #     a, distr, cfg, [1;N_z], :z,
     #     leglabs=["low z", "high z"], tit="Asset distribution")
     # Plots.savefig(figpath * "ss_asset_distr.png")
 
     # EULER ERRORS (by productivity group)
     errs_eu = err_euler(eco)
-    unconstr = .!get_borrowing_constrained(eco, her)
+    unconstr = .!get_borrowing_constrained(eco)
     errs_labs = repeat([""], N_z)
     errs_labs[[1,N_z]] .= ["low z", "high z"]
     plot_by_group(
-        a[unconstr], errs_eu[unconstr], cfg, 1:N_z, her.states[unconstr, her.ind.z];
+        a[unconstr], errs_eu[unconstr], cfg, 1:N_z, hh.states.z[unconstr];
         ptype=scatter!, leglabs=errs_labs, tit="Euler Errors")
     Plots.savefig(figpath * "ss_euler_err.png")
     return nothing

@@ -1,11 +1,10 @@
-function ss_test(eco::Economía, her::Herramientas; tol=1e-6)
+function ss_test(eco::Economía; tol=1e-6)
     # PRELIMINARIES
     # Aggregate variables
     agg = Aggregates(eco)
     # Unpack
     @unpack hh, fm, pr, distr, Q = eco
-    @unpack states, ind, process_z = her
-    @unpack S, G = hh
+    @unpack S, G, states, process_z = hh
     @unpack A, A0, K, L, C, Y = agg
     
     # Q-MATRIX
@@ -18,13 +17,13 @@ function ss_test(eco::Economía, her::Herramientas; tol=1e-6)
     # Distribution is stationary
     @test maximum(abs.(Q * distr - distr)) < tol
     # SS distribution by productivity level
-    ss_z_dist = vcat([sum(distr[indJ]) for indJ in eachcol(states[:,ind.z].==(1:size(process_z))')]...)
+    ss_z_dist = vcat([sum(distr[indJ]) for indJ in eachcol(states.z .== (1:size(process_z))')]...)
     @test maximum(abs.(ss_z_dist - process_z.ss_dist)) < tol
 
     # HOUSEHOLD'S PROBLEM
     # Euler equation (only applies to unconstrained households)
     errs_eu = err_euler(eco)
-    unconstr = .!get_borrowing_constrained(eco, her)
+    unconstr = .!get_borrowing_constrained(eco)
     @test maximum(abs.(errs_eu[unconstr])) < 1000*tol  # lower tolerance requires larger N_a 
     # sum(distr .* (abs.(errs_eu).>100tol) .* (unconstr))
     # Budget constraint
