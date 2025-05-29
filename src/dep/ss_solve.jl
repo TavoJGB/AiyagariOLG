@@ -147,10 +147,10 @@ function value!(hh::Households)::Nothing
     @unpack gens, pref = hh
     value!(gens[end], pref)
     for (ig, g) in enumerate(gens[(end-1):-1:1])
-        @unpack v′ = gens[ig+1].v
+        v′ = gens[ig+1].v
         value!(g, pref, v′)
     end
-    hh.gens = gens
+    # hh.gens .= gens
     return nothing
 end
 

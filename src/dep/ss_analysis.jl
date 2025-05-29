@@ -62,22 +62,26 @@ function ss_mobility(eco::Economía;
     nq::Int=5
 )
     @unpack hh, pr = eco
+    @unpack gens = hh
     # Assemble relevant variables
-    distr = assemble(hh.gens, :distr)
-    a = assemble(hh.gens, :S, :a)
-    z = assemble(hh.gens, :S, :z)
+    Qs = getproperty.(gens[1:nt], :Q)
+    newby_distr = gens[1].distr
+    newby_labinc = pr.w * gens[1].S.z
+    fut_distr = gens[nt+1].distr
+    fut_labinc = pr.w * gens[nt+1].S.z
     # Preliminaries
     labs = ["Q$(i)" for i in 1:nq]
     # Income mobility: prospects for the bottom and top labour income quintiles
-    quantmat_nt_incL=quantile_matrix(nq, pr.w*z, distr)  # SS => quantile matrix is the same now and in the future
-    fut_quants_bottom_incL = future_probabilities(distr.*quantmat_nt_incL[1,:] |> collect, Q, nt, quantmat_nt_incL, :incL; labels=labs, subgroup_label="bottom 20%")
-    fut_quants_top_incL = future_probabilities(distr.*quantmat_nt_incL[end,:] |> collect, Q, nt, quantmat_nt_incL, :incL; labels=labs, subgroup_label="top 20%")
-    # Income mobility: prospects for the bottom and top labour income quintiles
-    quantmat_nt_a=quantile_matrix(nq, a, distr)  # SS => quantile matrix is the same now and in the future
-    fut_quants_bottom_a = future_probabilities(distr.*quantmat_nt_a[1,:] |> collect, Q, nt, quantmat_nt_a, :a; labels=labs, subgroup_label="bottom 20%")
-    fut_quants_top_a = future_probabilities(distr.*quantmat_nt_a[end,:] |> collect, Q, nt, quantmat_nt_a, :a; labels=labs, subgroup_label="top 20%")
-    return (;   mob_incL=[fut_quants_bottom_incL, fut_quants_top_incL],
-                mob_a=[fut_quants_bottom_a, fut_quants_top_a])
+    quantmat_newby_incL=quantile_matrix(nq, newby_labinc, newby_distr)
+    quantmat_fut_incL=quantile_matrix(nq, fut_labinc, fut_distr)
+    fut_quants_bottom_incL = future_probabilities(newby_distr.*quantmat_newby_incL[1,:] |> collect, Qs, nt, quantmat_fut_incL, :incL; labels=labs, subgroup_label="bottom 20% income")
+    fut_quants_top_incL = future_probabilities(newby_distr.*quantmat_newby_incL[end,:] |> collect, Qs, nt, quantmat_fut_incL, :incL; labels=labs, subgroup_label="top 20% income")
+    # # Wealth mobility: prospects for the bottom and top labour wealth quintiles
+    # quantmat_nt_a=quantile_matrix(nq, a, distr)  # SS => quantile matrix is the same now and in the future
+    # fut_quants_bottom_a = future_probabilities(distr.*quantmat_nt_a[1,:] |> collect, Q, nt, quantmat_nt_a, :a; labels=labs, subgroup_label="bottom 20%")
+    # fut_quants_top_a = future_probabilities(distr.*quantmat_nt_a[end,:] |> collect, Q, nt, quantmat_nt_a, :a; labels=labs, subgroup_label="top 20%")
+    return (;   mob_incL=[fut_quants_bottom_incL, fut_quants_top_incL])#,
+                # mob_a=[fut_quants_bottom_a, fut_quants_top_a])
 end
 
 
@@ -155,7 +159,6 @@ function Base.show(xs::Vector{<:StatFutureDistr{Ts}}) where {Ts<:StatisticType}
     pretty_table(data; header, alignment=[:l; fill(:c, ncol-1)])
 end
 
-
 # Main function
 function ss_analysis(eco::Economía;
                      save_results::Bool=true,   # by default, save results in file
@@ -171,9 +174,9 @@ function ss_analysis(eco::Economía;
     ss_distr_cs = ss_distributional_analysis(eco; kwargs...)
     show(ss_distr_cs)
     # Distribution
-    # println("\nDistributional analysis: mobility")
-    # ss_mob = ss_mobility(eco; nt=10, nq=5)
-    # show(ss_mob.mob_incL)
+    println("\nDistributional analysis: mobility")
+    ss_mob = ss_mobility(eco; nt=3, nq=5)
+    show(ss_mob.mob_incL)
     # show(ss_mob.mob_a)
     # Export results
     save_results && export_csv(filepath, exportable([ss_summ; ss_distr_cs]); delim='=')
