@@ -37,3 +37,4 @@ cfg_graph_plotsiz="800x600"
 cfg_graph_fsize=14
 cfg_graph_leg_fsize=14
 cfg_graph_lwidth=2
+cfg_graph_combine_gens=2

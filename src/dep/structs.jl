@@ -44,6 +44,7 @@ end
     fsize::Real
     leg_fsize::Real
     lwidth::Real
+    combine_gens::Int
 end
 function _GraphConfig(; plotsiz::String, kwargs...)
     return GraphConfig(; plotsiz=parse.(Int, split(plotsiz,"x")), kwargs...)
@@ -164,6 +165,11 @@ struct StateIndices
         return new(kron(1:N_z, ones(Ti, N_a)), repeat(1:N_a, N_z))
     end
 end
+struct CombinedStateIndices
+    age::Vector{<:Int}
+    z::Vector{<:Int}
+    a::Vector{<:Int}
+end
 
 # State variables
 struct StateVariables
@@ -175,7 +181,9 @@ end
 mutable struct PolicyFunctions
     c::Vector{<:Real}
     a′::Vector{<:Real}
-    # Constructors
+    # Constructor
+    PolicyFunctions(c::Vector{<:Real}, a′::Vector{<:Real}) = new(c, a′)
+    # Initialiser
     function PolicyFunctions(N::Int)
         c = Array{Float64}(undef, N)
         a′ = Array{Float64}(undef, N)
@@ -200,6 +208,7 @@ abstract type AbstractGenerationType end
 struct StandardGen <: AbstractGenerationType end
 struct Newby <: AbstractGenerationType end
 struct Oldest <: AbstractGenerationType end
+struct CombinedGen <: AbstractGenerationType end
 
 struct Generation{Tg<:AbstractGenerationType} <: AgentGroup
     # Characteristics
@@ -215,29 +224,60 @@ struct Generation{Tg<:AbstractGenerationType} <: AgentGroup
     # Other
     Q::SparseMatrixCSC
     distr::Vector{<:Real}
-    function Generation(type::AbstractGenerationType, min_age::Int, max_age::Int, grid_z::AbstractGrid, grid_a::AbstractGrid)
-        # Matrix of state indices
-        states = StateIndices(; N_z=size(grid_z), N_a=size(grid_a))
-        # Number of agents in a generation
-        N = size(states.a, 1)
-        # State variables
-        zz = get_node.(Ref(grid_z), states.z)
-        aa = get_node.(Ref(grid_a), states.a)
-        S = StateVariables(zz, aa)
-        # Initialise policy functions
-        G = PolicyFunctions(N)
-        # Initialise value function
-        vv = similar(zz)
-        # Initialise Q-transition matrix
-        Q = spzeros(N, N)
-        # Initialise distribution
-        distr = fill(1/N, N)
-        # Return structure
-        return new{typeof(type)}(min_age, max_age, N, states, S, G, vv, Q, distr)
-    end
 end
+# Initialiser
+function Generation(type::AbstractGenerationType, min_age::Int, max_age::Int, grid_z::AbstractGrid, grid_a::AbstractGrid)
+    # Matrix of state indices
+    states = StateIndices(; N_z=size(grid_z), N_a=size(grid_a))
+    # Number of agents in a generation
+    N = size(states.a, 1)
+    # State variables
+    zz = get_node.(Ref(grid_z), states.z)
+    aa = get_node.(Ref(grid_a), states.a)
+    S = StateVariables(zz, aa)
+    # Initialise policy functions
+    G = PolicyFunctions(N)
+    # Initialise value function
+    vv = similar(zz)
+    # Initialise Q-transition matrix
+    Q = spzeros(N, N)
+    # Initialise distribution
+    distr = fill(1/N, N)
+    # Return structure
+    return Generation{typeof(type)}(min_age, max_age, N, states, S, G, vv, Q, distr)
+end
+# Methods
 Base.size(g::Generation) = g.N
 get_N_agents(gens::Vector{Generation}) = sum(assemble(gens, :N))
+
+# Combine generations
+function combine(gens::Vector{Generation})
+    # Assemble variables
+    assemble(gens::Vector{Generation}, f::Function, args...) = vcat([f(g, args...) for g in gens]...)
+    min_ages = assemble(gens, g -> fill(g.min_age, g.N))
+    max_ages = assemble(gens, g -> fill(g.max_age, g.N))
+    z = assemble(gens, :S, :z)
+    a = assemble(gens, :S, :a)
+    c = assemble(gens, :G, :c)
+    a′ = assemble(gens, :G, :a′)
+    v = assemble(gens, :v)
+    Q = sparse(1,1,NaN,1,1)
+    distr = assemble(gens, :distr)
+    # Other variables
+    min_age = minimum(min_ages)
+    max_age = maximum(max_ages)
+    N = length(z)
+    # Structures
+    states = CombinedStateIndices(ig, z, min_ages)
+    S = StateVariables(z, a)
+    G = PolicyFunctions(c, a′)
+    # Create combined generation
+    return Generation{CombinedGen}(min_age, max_age, N, states, S, G, v, Q, distr)
+end
+function combine(gens::Vector{Generation}, howmany::Int)
+    howmany==1 && return gens  # don't do anything if howmany == 1
+    return [combine(gens[i:(i+howmany-1)]) for i in 1:howmany:length(gens)]
+end
 
 
 

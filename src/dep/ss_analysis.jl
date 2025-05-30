@@ -194,6 +194,9 @@ function ss_graphs(eco::Economía, cfg::GraphConfig)::Nothing
     @unpack hh, gens = eco
     @unpack states, process_z, grid_a = hh
     w = eco.pr.w
+    # Combine generations (if needed)
+    @unpack figpath, combine_gens = cfg
+    gens = combine(gens, combine_gens)
     # Assemble states and policy functions
     a′ = assemble(gens, :G, :a′)
     c = assemble(gens, :G, :c)
@@ -203,7 +206,6 @@ function ss_graphs(eco::Economía, cfg::GraphConfig)::Nothing
     # Other
     N_z = size(process_z)
     malla_a = grid_a.nodes
-    @unpack figpath=cfg
 
     # POLICY FUNCTIONS (by productivity group)
     # Savings
