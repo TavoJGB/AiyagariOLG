@@ -23,8 +23,7 @@ function err_budget(G::PolicyFunctions, prices::Prices, S::StateVariables)
 end
 function err_budget(eco::Economía)
     @unpack hh, pr = eco
-    @unpack G, S = hh
-    return err_budget(G, pr, S)
+    return vcat([ err_budget(g.G, pr, g.S) for g in hh.gens ]...) # Unpack all generations
 end
 
 # Solving the optimality conditions for one variable

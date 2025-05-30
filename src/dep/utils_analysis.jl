@@ -42,9 +42,9 @@ function get_borrowing_constrained(::BeginningOfPeriod, gens::Vector{<:Generatio
 end
 get_borrowing_constrained(::BeginningOfPeriod, hh::Households) = get_borrowing_constrained(BeginningOfPeriod(), hh.gens)
 
-# By default: beginning-of-period assets
-get_borrowing_constrained(gens::Vector{Generation}) = get_borrowing_constrained(BeginningOfPeriod(), gens)
-get_borrowing_constrained(hh::Households) = get_borrowing_constrained(BeginningOfPeriod(), hh)
+# By default: end-of-period assets
+get_borrowing_constrained(gens::Vector{Generation}, args...) = get_borrowing_constrained(EndOfPeriod(), gens, args...)
+get_borrowing_constrained(hh::Households) = get_borrowing_constrained(EndOfPeriod(), hh)
 
 
 
