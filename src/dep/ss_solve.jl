@@ -232,7 +232,7 @@ function Q_vecs!(
     return nothing
 end
 
-Q_matrix(::Generation{<:Oldest}, args...) = NaN
+Q_matrix(gg::Generation{<:Oldest}, args...) = sparse(I, size(gg.G.a′,1), size(gg.G.a′,1))*NaN
 function Q_matrix(
     gg::Generation, states′::StateIndices, Π_z::Matrix{<:Real}, grid_a′::AbstractGrid
 )

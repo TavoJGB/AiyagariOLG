@@ -145,10 +145,12 @@ function _quantile_vecs!(
     # Middle quantiles
     for (iq, qq) in zip(2:(length(qs)-1), qs[2:(end-1)])
         n = ind_U[iq]-ind_L[iq-1]
-        if n<=1 # Skip quantiles with no individuals
+        if n<=2 # Skip quantiles with no individuals
             @warn "Quantile $(qq) does not have enough individuals assigned. Skipping."
             continue
-            #= Otherwise, I'd get the following error:
+            #= This happens when there is a jump in the cumulative distribution,
+            such that for some quantile there are no individuals assigned. 
+            In that case, I get the following error:
 
             ERROR: ArgumentError: invalid GenericMemory size: too large for system address width
             Stacktrace:

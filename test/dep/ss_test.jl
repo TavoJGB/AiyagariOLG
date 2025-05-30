@@ -12,7 +12,8 @@ function ss_test(eco::Economía; tol=1e-6)
 
     # Q-MATRIX
     # Total transition probabilities for each combination of states (each column) is 1
-    @test maximum(abs.( assemble(gens, g -> sum(getproperty(g,:Q), dims=1) .- 1.0 ))) < tol   
+    # Ignore the last generation because they do not need transitions
+    @test maximum(abs.( assemble(gens[1:(end-1)], g -> sum(getproperty(g,:Q), dims=1) .- 1.0 ))) < tol
 
     # STATIONARY DISTRIBUTION
     # Total population is normalised to 1
