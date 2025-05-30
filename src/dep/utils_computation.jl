@@ -265,3 +265,20 @@ function subset_namedtuple(nt::NamedTuple, substr::String; typesubstr::String="P
     newvals = values(subset)
     return NamedTuple(newkeys .=> newvals)
 end
+
+
+
+#===========================================================================
+    ZIP FORWARD AND BACKWARDS
+    Methods to get pairs of subsequent elements in a vector
+    (f.e. in a vector of generations)
+===========================================================================#
+
+# Methods to get pairs of subsequent elements in a vector
+# (f.e. in a vector of generations)
+zip_backward(x::AbstractVector) = zip(x[(end-1):-1:1], x[end:-1:2])
+zip_forward(x::AbstractVector) = zip(x[2:end], x[1:(end-1)])
+# Test:
+# for (g,g′) in zip_backward(gens)
+#     println("Age g: $(g.age). Age g′: $(g′.age).")
+# end

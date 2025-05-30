@@ -185,7 +185,7 @@ end
 
 # Life-cycle structure
 function get_ages(; min_age::Int, max_age::Int, years_per_period::Int)
-    return (range(min_age, max_age, step=years_per_period) .+ years_per_period/2)
+    return range(min_age, max_age, step=years_per_period)
 end
 get_life_cycle_parameters() = [:min_age, :max_age, :years_per_period]
 
@@ -202,16 +202,20 @@ struct Newby <: AbstractGenerationType end
 struct Oldest <: AbstractGenerationType end
 
 struct Generation{Tg<:AbstractGenerationType} <: AgentGroup
-    age::Real
+    # Characteristics
+    min_age::Int
+    max_age::Int
     N::Int
+    # States and policy functions
     states::StateIndices
     S::StateVariables
     G::PolicyFunctions
-    v::Vector{<:Real}  # Value function
+    # Value function
+    v::Vector{<:Real}
     # Other
     Q::SparseMatrixCSC
     distr::Vector{<:Real}
-    function Generation(type::AbstractGenerationType, age::Real, grid_z::AbstractGrid, grid_a::AbstractGrid)
+    function Generation(type::AbstractGenerationType, min_age::Int, max_age::Int, grid_z::AbstractGrid, grid_a::AbstractGrid)
         # Matrix of state indices
         states = StateIndices(; N_z=size(grid_z), N_a=size(grid_a))
         # Number of agents in a generation
@@ -229,22 +233,11 @@ struct Generation{Tg<:AbstractGenerationType} <: AgentGroup
         # Initialise distribution
         distr = fill(1/N, N)
         # Return structure
-        return new{typeof(type)}(age, N, states, S, G, vv, Q, distr)
+        return new{typeof(type)}(min_age, max_age, N, states, S, G, vv, Q, distr)
     end
 end
 Base.size(g::Generation) = g.N
 get_N_agents(gens::Vector{Generation}) = sum(assemble(gens, :N))
-
-# Methods to get pairs of subsequent generations
-abstract type ZipDirection end
-struct ZipBackwards <: ZipDirection end
-struct ZipForward <: ZipDirection end
-Base.zip(::ZipBackwards, gens::Vector{Generation}) = zip(gens[(end-1):-1:1], gens[end:-1:2])
-Base.zip(::ZipForward, gens::Vector{Generation}) = zip(gens[2:end], gens[1:(end-1)])
-# Test:
-# for (g,g′) in zip(ZipBackwards(), gens)
-#     println("Age g: $(g.age). Age g′: $(g′.age).")
-# end
 
 
 
@@ -267,10 +260,10 @@ struct Households
         # Preferences
         pref = Preferencias(tipo_pref; kwargs...)
         # Vector of generations
-        gens = [Generation(StandardGen(), age, grid_z, grid_a) for age in ages[2:(end-1)]]
-        gens = vcat(Generation(Newby(), ages[1], grid_z, grid_a),
+        gens = [Generation(StandardGen(), min_age, max_age-1, grid_z, grid_a) for (max_age, min_age) in zip_forward(ages[2:(end-1)])]
+        gens = vcat(Generation(Newby(), ages[1], ages[2]-1, grid_z, grid_a),
                     gens,
-                    Generation(Oldest(), ages[1], grid_z, grid_a))
+                    Generation(Oldest(), ages[end-1], ages[end]-1, grid_z, grid_a))
         # Total number of agents
         N = get_N_agents(gens)
         # Return structure

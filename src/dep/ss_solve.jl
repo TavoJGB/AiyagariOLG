@@ -13,7 +13,7 @@ end
 function err_euler(eco::Economía)
     @unpack hh, pr = eco
     @unpack pref, gens = hh
-    return vcat([ err_euler(g.G.c, pref, g.Q, pr.r; c′=g′.G.c) for (g, g′) in zip(ZipBackwards(), gens) ]...)
+    return vcat([ err_euler(g.G.c, pref, g.Q, pr.r; c′=g′.G.c) for (g, g′) in zip_backward(gens) ]...)
 end
 function err_budget(G::PolicyFunctions, prices::Prices, S::StateVariables)
     @unpack c, a′ = G
@@ -104,7 +104,7 @@ function hh_solve!(eco::Economía, cfg::Configuration)::Nothing
     # Update policy functions for each generation
     aux_get_guess(gg::Generation) = gg.G.c
     solve!(cfg_hh, aux_get_guess, gens[end], EGM_iter!, pr)   # last generation
-    for (g, g′) in zip(ZipBackwards(), gens)  # previous generations
+    for (g, g′) in zip_backward(gens)  # previous generations
         solve!(cfg_hh, aux_get_guess, g, EGM_iter!, pr, g′.G.c, pref, process_z, grid_a)
     end
     # Q-transition matrix
@@ -144,7 +144,7 @@ end
 function value!(hh::Households)::Nothing
     @unpack gens, pref = hh
     value!(gens[end], pref)
-    for (g, g′) in zip(ZipBackwards(), gens)
+    for (g, g′) in zip_backward(gens)
         value!(g, pref, g′.v)
     end
     # hh.gens .= gens
@@ -264,7 +264,7 @@ function Q_matrix!(hh::Households)::Nothing
     @unpack gens, process_z, grid_a = hh
     # Compute Q-transition matrix for each generation
     Q_matrix!(gens[end])
-    for (g, g′) in zip(ZipBackwards(), gens)
+    for (g, g′) in zip_backward(gens)
         Q_matrix!(g, g′.states, process_z.Π, grid_a)
     end
     return nothing    
@@ -294,7 +294,7 @@ function distribution!(hh::Households)::Nothing
     # Compute distribution for the youngest generation
     distribution!(gens[1], grid_a, process_z, N_g)
     # Compute distribution for the rest of generations
-    for (g, g_prev) in zip(ZipForward(), gens)
+    for (g, g_prev) in zip_forward(gens)
         distribution!(g, g_prev.Q, g_prev.distr)
     end
     return nothing
