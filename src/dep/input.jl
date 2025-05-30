@@ -70,12 +70,11 @@ function build_model(
     # Configuration of solvers
     cfg_r = get_object(pars, "cfg_r_")
     cfg_hh = get_object(pars, "cfg_hh_")
-    cfg_distr = get_object(pars, "cfg_distr_")
     cfg_graph = _GraphConfig(; subset_namedtuple(pars, "cfg_graph_")...)
     # Build structures
     hh = Households(; ages, process_z, grid_a, getindex(pars, get_preference_parameters())...)
     fm = Firms(; getindex(pars, get_firm_parameters())...)
-    cfg = Configuration(cfg_r, cfg_hh, cfg_distr, cfg_graph, pars.years_per_period)
+    cfg = Configuration(cfg_r, cfg_hh, cfg_graph, pars.years_per_period)
     # Return structures
     return (; hh, fm, cfg)
 end

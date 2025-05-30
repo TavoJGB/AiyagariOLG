@@ -24,18 +24,6 @@ function EGM!(pars::SolverParameters, get_guess::Function, main, iterator!::Func
     error("EGM did not converge")
 end
 
-# POWM
-function solve(solver::Solver{<:POWM}, args...)
-    return POWM(solver.p, args...)
-end
-function POWM(pars::SolverParameters, Q::AbstractMatrix)
-    N = size(Q,1)
-    @unpack maxit, tol = pars
-    _, x = powm!(Q, ones(N), maxiter=maxit, tol=tol)
-    # returns the approximate largest eigenvalue λ of M and one of its eigenvector
-    return x / sum(x)
-end
-
 # Linear Jumps: update to the linear combination of guess and implied values
 function solve!(solver::Solver{<:LinearJumps}, args...)
     LinearJumps!(solver.p, args...)

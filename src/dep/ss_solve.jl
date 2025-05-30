@@ -101,7 +101,7 @@ end
 function hh_solve!(eco::Economía, cfg::Configuration)::Nothing
     @unpack hh, fm, pr = eco
     @unpack gens, pref, process_z, grid_a = hh
-    @unpack cfg_hh, cfg_distr = cfg
+    @unpack cfg_hh = cfg
     # Update policy functions for each generation
     aux_get_guess(gg::Generation) = gg.G.c
     solve!(cfg_hh, aux_get_guess, gens[end], EGM_iter!, pr)   # last generation

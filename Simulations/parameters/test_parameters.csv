@@ -27,11 +27,6 @@ cfg_hh_tipo=EGM()
 cfg_hh_objective="Household problem"
 cfg_hh_tol=1e-6
 cfg_hh_maxit=1000
-# Solver parameters: stationary distribution
-cfg_distr_tipo=POWM()
-cfg_distr_objective="Stationary distribution"
-cfg_distr_tol=1e-16
-cfg_distr_maxit=1000
 # Graphs configuration
 cfg_graph_figpath="./Figuras/"
 cfg_graph_plotsiz="800x600"
