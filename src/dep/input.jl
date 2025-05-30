@@ -75,7 +75,7 @@ function build_model(
     # Build structures
     hh = Households(; ages, process_z, grid_a, getindex(pars, get_preference_parameters())...)
     fm = Firms(; getindex(pars, get_firm_parameters())...)
-    cfg = Configuration(cfg_r, cfg_hh, cfg_distr, cfg_graph)
+    cfg = Configuration(cfg_r, cfg_hh, cfg_distr, cfg_graph, pars.years_per_period)
     # Return structures
     return (; hh, fm, cfg)
 end

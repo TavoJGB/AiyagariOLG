@@ -332,7 +332,7 @@ end
 
 function steady(hh::Households, fm::Firms, cfg::Configuration; r_0)
     # Initialise economy
-    eco = Economía(r_0, hh, fm)
+    eco = Economía(r_0, hh, fm, cfg.years_per_period)
     # General equilibrium
     solve!(cfg.cfg_r, r_0, K_market!, eco, cfg)
     # Update value function

@@ -54,6 +54,8 @@ struct Configuration
     cfg_hh::Solver
     cfg_distr::Solver
     cfg_graph::GraphConfig
+    # Years per model period
+    years_per_period::Int
 end
 
 
@@ -303,18 +305,25 @@ end
     ECONOMY
 ===========================================================================#
 
+mutable struct TimeStructure
+    years_per_period::Int
+    years_cohort::Int
+end
+
 struct Economía
     # Agents
     hh::Households
     fm::Firms
     # Prices
     pr::Prices
+    # Time structure
+    time_str::TimeStructure
     # Basic initialiser
-    function Economía(r_0::Real, hh::Households, fm::Firms)
+    function Economía(r_0::Real, hh::Households, fm::Firms, years_per_period::Int)
         # Initialise prices
         pr = Prices(r_0, get_w(r_0, fm))
         # Return the structure
-        return new(hh, fm, pr)
+        return new(hh, fm, pr, TimeStructure(years_per_period, years_per_period))
     end
 end
 
