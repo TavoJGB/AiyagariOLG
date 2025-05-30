@@ -82,10 +82,11 @@ function build_model(
     # Read parameters
     pars_file = import_csv(filepath)
     pars_code = NamedTuple(kwargs)
-    pars = merge(pars_file, pars_code)  # merge parameters, prioritising those introduced in the command line
-    pars = deannualise(pars, pars.years_per_period)  # deannualise parameters
+    annual_pars = merge(pars_file, pars_code)  # merge parameters, prioritising those introduced in the command line
     # Write parameters in file
-    save_pars && export_csv(outputpath, pars; delim='=')
+    save_pars && export_csv(outputpath, annual_pars; delim='=')
+    # Deannualise parameters
+    pars = deannualise(annual_pars, annual_pars.years_per_period)
     # Grids and processes
     process_z = get_object(pars, "_z"; typesubstr="Suffix")
     grid_a = get_object(pars, "_a"; typesubstr="Suffix")
