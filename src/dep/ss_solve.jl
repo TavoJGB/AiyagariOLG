@@ -314,8 +314,8 @@ function K_market!(r_0::Real, eco::Economía, cfg::Configuration)
     # Update households
     hh_solve!(eco, cfg)
     # Compute aggregates
-    agg = Aggregates(eco)
-    @unpack A, K, L = agg
+    update_aggregates!(eco)
+    @unpack A, K, L = eco.agg
     # Implied r
     r_new = get_r(A, L, eco.fm)
     # Return error in capital market and implied r
@@ -328,7 +328,7 @@ end
     STEADY STATE
 ===========================================================================#
 
-function steady(hh::Households, fm::Firms, cfg::Configuration; r_0)
+function steady(hh0::Households, fm0::Firms, cfg::Configuration; r_0)
     # Initialise economy
     eco = Economía(r_0, hh, fm, cfg.years_per_period)
     # General equilibrium
@@ -337,4 +337,44 @@ function steady(hh::Households, fm::Firms, cfg::Configuration; r_0)
     value!(eco.hh)
     # Return the steady state economy
     return eco
+end
+
+
+
+#===========================================================================
+    ANNUALISE RESULTS
+===========================================================================#
+
+function annualise!(eco::Economía)::Nothing
+    @unpack years_per_period = eco.time_str
+    annualise!(eco.hh, years_per_period)
+    annualise!(eco.pr, years_per_period)
+    annualise!(eco.agg, years_per_period)
+    eco.time_str.years_per_period = 1.0
+    return nothing
+end
+function annualise!(G::PolicyFunctions, years_per_period::Real)::Nothing 
+    G.c .= G.c / years_per_period
+    return nothing
+end
+function annualise!(S::StateVariables, years_per_period::Real)::Nothing
+    S.z .= S.z / years_per_period
+    return nothing
+end
+function annualise!(hh::Households, years_per_period::Real)::Nothing
+    @unpack gens = hh
+    for g in gens
+        annualise!(g.G, years_per_period)
+        annualise!(g.S, years_per_period)
+    end
+    return nothing
+end
+function annualise!(pr::Prices, years_per_period::Real)::Nothing
+    pr.r = (1+pr.r)^(1/years_per_period) - 1
+    return nothing
+end
+function annualise!(agg::Aggregates, years_per_period::Real)::Nothing
+    agg.Y /= years_per_period
+    agg.C /= years_per_period
+    return nothing
 end

@@ -47,7 +47,7 @@ end
 function _get_mpc(c::Vector{<:Real}, a::Vector{<:Real})
     return diff(c) ./ diff(a)
 end
-function get_mpc(g::Generation, process_z::MarkovProcess)
+function get_mpc(g::Generation, N_z::Int)
     @unpack states = g
     # Unpack relevant variables
     @unpack a = g.S
@@ -55,7 +55,7 @@ function get_mpc(g::Generation, process_z::MarkovProcess)
     # Initialise MPC vector
     mpc = Float64[]
     # For each combination of states (other than assets), compute MPCs
-    for indZ in eachcol(states.z .== (1:size(process_z))')
+    for indZ in eachcol(states.z .== (1:N_z)')
         append!(mpc, [_get_mpc(c[indZ], a[indZ]); NaN])
     end
     return mpc
@@ -63,7 +63,7 @@ end
 function get_average_mpc(hh::Households; desc::String="Average MPC")
     # Preliminaries
     @unpack process_z, gens = hh
-    mpc = vcat([get_mpc(g, process_z) for g in gens]...)
+    mpc = assemble(gens, get_mpc, size(process_z))
     distr = assemble(gens, :distr)
     # We cannot compute MPC for the richest agent of each combination
     # of states

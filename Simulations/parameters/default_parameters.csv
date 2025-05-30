@@ -8,7 +8,7 @@ tipo_pref=CRRA()
 # Idiosyncratic shock parameters
 N_z=5
 tipo_z=DiscreteAR1
-ρ_z=0.94
+ρ_z=0.92
 σ_z=0.20
 # Asset-grid parameters
 tipo_a=CurvedGrid

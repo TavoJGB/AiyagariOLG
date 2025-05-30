@@ -185,7 +185,7 @@ end
 
 # Life-cycle structure
 function get_ages(; min_age::Int, max_age::Int, years_per_period::Int)
-    return range(min_age, max_age, step=years_per_period)
+    return (range(min_age, max_age, step=years_per_period) .+ years_per_period/2)
 end
 get_life_cycle_parameters() = [:min_age, :max_age, :years_per_period]
 
@@ -202,7 +202,7 @@ struct Newby <: AbstractGenerationType end
 struct Oldest <: AbstractGenerationType end
 
 struct Generation{Tg<:AbstractGenerationType} <: AgentGroup
-    age::Int
+    age::Real
     N::Int
     states::StateIndices
     S::StateVariables
@@ -271,6 +271,8 @@ struct Households
         return new(N, gens, pref, process_z, grid_a)
     end
 end
+
+# Methods
 get_preference_parameters() = [:tipo_pref, :β, :γ]
 grids(hh::Households) = hh.process_z.grid, hh.grid_a
 assemble(x, key::Symbol) = vcat(getproperty.(x, key)...)
@@ -323,33 +325,15 @@ mutable struct TimeStructure
     years_cohort::Int
 end
 
-struct Economía
-    # Agents
-    hh::Households
-    fm::Firms
-    # Prices
-    pr::Prices
-    # Time structure
-    time_str::TimeStructure
-    # Basic initialiser
-    function Economía(r_0::Real, hh::Households, fm::Firms, years_per_period::Int)
-        # Initialise prices
-        pr = Prices(r_0, get_w(r_0, fm))
-        # Return the structure
-        return new(hh, fm, pr, TimeStructure(years_per_period, years_per_period))
-    end
-end
-
-struct Aggregates
+mutable struct Aggregates
     A::Real     # aggregate savings
     A0::Real    # aggregate beginning-of-period assets
     K::Real     # aggregate capital
     L::Real     # aggregate labor
     Y::Real     # aggregate output
     C::Real     # aggregate consumption
-    function Aggregates(eco::Economía)
+    function Aggregates(hh::Households, fm::Firms, pr::Prices)
         # Unpack
-        @unpack pr, hh, fm = eco
         @unpack gens = hh
         @unpack ratio_KL, F = fm
         # Assemble states and policy functions
@@ -369,6 +353,44 @@ struct Aggregates
         Y = F(K, L)
         return new(A, A0, K, L, Y, C)
     end
+end
+
+struct Economía
+    # Agents
+    hh::Households
+    fm::Firms
+    # Prices
+    pr::Prices
+    # Aggregates
+    agg::Aggregates
+    # Time structure
+    time_str::TimeStructure
+    # Basic initialiser
+    function Economía(r_0::Real, hh::Households, fm::Firms, years_per_period::Int)
+        # Initialise prices
+        pr = Prices(r_0, get_w(r_0, fm))
+        # Initialise aggregates
+        agg = Aggregates(hh, fm, pr)
+        # Create time structure
+        time_str = TimeStructure(years_per_period, years_per_period)
+        # Return the structure
+        return new(hh, fm, pr, agg, time_str)
+    end
+end
+
+function update_aggregates!(eco::Economía)::Nothing
+    # Unpack
+    @unpack hh, fm, pr = eco
+    # Compute new aggregates
+    agg = Aggregates(hh, fm, pr)
+    # Update values in eco structure
+    eco.agg.A   = agg.A
+    eco.agg.A0  = agg.A0
+    eco.agg.K   = agg.K
+    eco.agg.L   = agg.L
+    eco.agg.Y   = agg.Y
+    eco.agg.C   = agg.C
+    return nothing
 end
 
 

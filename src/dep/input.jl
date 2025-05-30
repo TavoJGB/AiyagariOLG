@@ -23,6 +23,29 @@ _get_object(tipo::SolverType; kwargs...) = Solver(tipo; kwargs...)
 
 
 
+
+
+#===========================================================================
+    DEANNUALISE PARAMETERS
+    I introduce annual values, but the model period may be different (if
+    years_per_period != 1)
+===========================================================================#
+
+function deannualise(pars, years_per_period)
+    years_per_period==1 && return pars  # if years_per_period == 1, do nothing
+    # Newpars
+    β = pars.β^years_per_period
+    ρ_z = pars.ρ_z^years_per_period
+    σ_z = pars.σ_z*sqrt( sum( pars.ρ_z .^ (2*((1:years_per_period).-1)) ) )
+    δ = 1-(1-pars.δ)^years_per_period
+    # Create struct
+    newpars = (; β, ρ_z, σ_z, δ)
+    return merge(pars, newpars)
+end
+
+
+
+
 #===========================================================================
     READ PARAMETERS OR RESULTS
 ===========================================================================#
@@ -60,6 +83,7 @@ function build_model(
     pars_file = import_csv(filepath)
     pars_code = NamedTuple(kwargs)
     pars = merge(pars_file, pars_code)  # merge parameters, prioritising those introduced in the command line
+    pars = deannualise(pars, pars.years_per_period)  # deannualise parameters
     # Write parameters in file
     save_pars && export_csv(outputpath, pars; delim='=')
     # Grids and processes

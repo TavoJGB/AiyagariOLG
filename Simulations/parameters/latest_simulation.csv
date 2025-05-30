@@ -1,12 +1,12 @@
 tipo_pref=AiyagariOLG.CRRA()
-β=0.94
+β=0.7339040223999997
 γ=1.5
 α=0.3333333333333333
-δ=0.1
+δ=0.40950999999999993
 N_z=5
 tipo_z=AiyagariOLG.DiscreteAR1
-ρ_z=0.94
-σ_z=0.2
+ρ_z=0.6590815232000001
+σ_z=0.38378988180938606
 tipo_a=AiyagariOLG.CurvedGrid
 N_a=150
 min_a=0

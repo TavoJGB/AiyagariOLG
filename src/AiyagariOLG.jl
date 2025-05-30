@@ -24,7 +24,7 @@ module AiyagariOLG
     include("./dep/output.jl")
         export write_parameters, compare_results
     include("./dep/ss_solve.jl")
-        export steady
+        export steady, annualise!
     include("./dep/ss_analysis.jl")
         export ss_analysis, ss_summarise, ss_distributional_analysis, ss_mobility, ss_graphs
 end

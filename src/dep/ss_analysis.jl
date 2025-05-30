@@ -3,9 +3,8 @@
 ===========================================================================#
 
 function ss_summarise(eco::Economía)
-    agg = Aggregates(eco)
+    @unpack hh, agg = eco
     @unpack K, C, Y = agg
-    @unpack hh = eco
     # Assemble relevant variables
     distr = assemble(hh.gens, :distr)
     a = assemble(hh.gens, :S, :a)
@@ -138,13 +137,13 @@ function Base.show(xs::Vector{<:StatDistr{Ts}}) where {Ts<:StatisticType}
 end
 
 # Print mobility analysis
-function Base.show(x::StatFutureDistr{Ts}) where {Ts<:StatisticType}
-    println(x.desc * " after $(x.periods) periods, having started from $(x.initial_group):")
+function Base.show(x::StatFutureDistr{Ts}; years_per_period=1) where {Ts<:StatisticType}
+    println(x.desc * " after $(years_per_period*x.periods) years, having started from $(x.initial_group):")
     for (val, lab) in zip(x)
         println("\t ", lab, ": ", fmt(Ts(), val))
     end
 end
-function Base.show(xs::Vector{<:StatFutureDistr{Ts}}) where {Ts<:StatisticType}
+function Base.show(xs::Vector{<:StatFutureDistr{Ts}}; years_per_period=1) where {Ts<:StatisticType}
     for x in xs[2:end]
         @assert all(x.labels .== xs[1].labels)
     end
@@ -155,7 +154,7 @@ function Base.show(xs::Vector{<:StatFutureDistr{Ts}}) where {Ts<:StatisticType}
         data[i,:] .= [x.initial_group; fmt.(Ref(Ts()), x.values; digits=0)...]
     end
     # Show
-    println(xs[1].desc * " after $(xs[1].periods) periods:")
+    println(xs[1].desc * " after $(years_per_period*xs[1].periods) years:")
     pretty_table(data; header, alignment=[:l; fill(:c, ncol-1)])
 end
 
@@ -176,7 +175,7 @@ function ss_analysis(eco::Economía;
     # Distribution
     println("\nDistributional analysis: mobility")
     ss_mob = ss_mobility(eco; nt=3, nq=5)
-    show(ss_mob.mob_incL)
+    show(ss_mob.mob_incL; years_per_period=eco.time_str.years_cohort)
     # show(ss_mob.mob_a)
     # Export results
     save_results && export_csv(filepath, exportable([ss_summ; ss_distr_cs]); delim='=')
