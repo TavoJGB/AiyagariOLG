@@ -191,41 +191,33 @@ end
 function ss_graphs(eco::Economía, cfg::GraphConfig)::Nothing
     # PRELIMINARIES
     # Unpacking
-    @unpack hh, gens = eco
-    @unpack states, process_z, grid_a = hh
-    w = eco.pr.w
+    @unpack hh, pr = eco
+    @unpack process_z, grid_a, gens = hh
+    @unpack w = pr
     # Combine generations (if needed)
     @unpack figpath, combine_gens = cfg
-    gens = combine(gens, combine_gens)
+    red_gens = combine(gens, combine_gens)
     # Assemble states and policy functions
     a′ = assemble(gens, :G, :a′)
     c = assemble(gens, :G, :c)
     a = assemble(gens, :S, :a)
     # Distribution
     distr = assemble(gens, :distr)
+    # Identify least and most productive groups
+    crit_z = g -> [identify_group(g.states.z, 1), identify_group(g.states.z, N_z)]
     # Other
     N_z = size(process_z)
-    malla_a = grid_a.nodes
 
     # POLICY FUNCTIONS (by productivity group)
     # Savings
-    plot_by_group(
-        a, a′, cfg, [1;N_z], states, :z;
-        leglabs=["low z", "high z"], tit="Policy functions: savings"
-    )
-    plot!(malla_a, malla_a, line=(cfg.lwidth, :dot), color=:darkgray, label="a' = a")
+    tiled_plot(plot_generation_by(gens, :a, :a′, crit_z, ["Min z", "Max z"]; cfg.lwidth), cfg, "Policy functions: savings")
     Plots.savefig(figpath * "ss_apol.png")
     # Consumption
-    plot_by_group(
-        a, c, cfg, [1;N_z], states, :z;
-        leglabs=["low z", "high z"], tit="Policy functions: consumption")
+    tiled_plot(plot_generation_by(gens, :a, :c, crit_z, ["Min z", "Max z"]; cfg.lwidth), cfg, "Policy functions: consumption")
     Plots.savefig(figpath * "ss_cpol.png")
 
     # VALUE FUNCTION (by productivity group)
-    v = get_value(hh, Q)
-    plot_by_group(
-        a, v, cfg, [1;N_z], states, :z;
-        leglabs=["low z", "high z"], tit="Value functions")
+    tiled_plot(plot_generation_by(gens, :a, :v, crit_z, ["Min z", "Max z"]; cfg.lwidth), cfg, "Value functions")
     Plots.savefig(figpath * "ss_value.png")
 
     # WEALTH DISTRIBUTION (by productivity group)

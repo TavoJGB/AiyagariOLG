@@ -158,14 +158,15 @@ struct Preferencias{TP<:TipoPreferencias}
 end
 
 # State Indicex
-struct StateIndices
+abstract type AbstractStateIndices end
+struct StateIndices <: AbstractStateIndices
     z::Vector{<:Int}
     a::Vector{<:Int}
     function StateIndices(; N_z::Ti, N_a::Ti) where {Ti<:Integer}
         return new(kron(1:N_z, ones(Ti, N_a)), repeat(1:N_a, N_z))
     end
 end
-struct CombinedStateIndices
+struct CombinedStateIndices <: AbstractStateIndices
     age::Vector{<:Int}
     z::Vector{<:Int}
     a::Vector{<:Int}
@@ -216,7 +217,7 @@ struct Generation{Tg<:AbstractGenerationType} <: AgentGroup
     max_age::Int
     N::Int
     # States and policy functions
-    states::StateIndices
+    states::AbstractStateIndices
     S::StateVariables
     G::PolicyFunctions
     # Value function
@@ -249,26 +250,28 @@ end
 # Methods
 Base.size(g::Generation) = g.N
 get_N_agents(gens::Vector{Generation}) = sum(assemble(gens, :N))
+get_age_range(g::Generation) = string(g.min_age, "-", g.max_age)
 
 # Combine generations
 function combine(gens::Vector{Generation})
     # Assemble variables
-    assemble(gens::Vector{Generation}, f::Function, args...) = vcat([f(g, args...) for g in gens]...)
     min_ages = assemble(gens, g -> fill(g.min_age, g.N))
     max_ages = assemble(gens, g -> fill(g.max_age, g.N))
+    iz = assemble(gens, :states, :z)
+    ia = assemble(gens, :states, :a)
     z = assemble(gens, :S, :z)
     a = assemble(gens, :S, :a)
     c = assemble(gens, :G, :c)
     a′ = assemble(gens, :G, :a′)
     v = assemble(gens, :v)
-    Q = sparse(1,1,NaN,1,1)
+    Q = sparse([1],[1],[NaN],1,1)
     distr = assemble(gens, :distr)
     # Other variables
     min_age = minimum(min_ages)
     max_age = maximum(max_ages)
     N = length(z)
     # Structures
-    states = CombinedStateIndices(ig, z, min_ages)
+    states = CombinedStateIndices(min_ages, iz, ia)
     S = StateVariables(z, a)
     G = PolicyFunctions(c, a′)
     # Create combined generation

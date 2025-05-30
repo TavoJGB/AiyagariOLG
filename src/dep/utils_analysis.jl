@@ -332,6 +332,59 @@ end
     GRAPHS: auxiliary functions
 ===========================================================================#
 
+# Grid of plots
+function tiled_plot(vec_plots::Vector{Plots.Plot}, cfg::GraphConfig)
+    @unpack plotsiz, fsize, leg_fsize = cfg
+    # Auxiliary: number of plots
+    N_p = size(vec_plots,1)
+    # Display them in tiled layout
+    tiledp = Plots.plot(vec_plots..., layout = N_p)
+    plot!(size=plotsiz, tickfontsize=fsize, legendfontsize=leg_fsize)
+    return tiledp
+end
+function tiled_plot(vec_plots::Vector{Plots.Plot}, cfg::GraphConfig, tit::String)
+    tiledplot = Plots.plot(
+        # Global title: workaround to show global title (empty plot with annotation)
+        Plots.scatter(ones(3), marker=0,markeralpha=0, annotations=(2, 1.0, Plots.text(tit)),axis=false, grid=false, leg=false,size=(200,100)),
+        # Grid of policy functions
+        tiled_plot(vec_plots, cfg),
+        # Layout of title vs grid of plots
+        layout=grid(2,1,heights=[0.1,0.9])
+    )
+    return tiledplot
+end
+
+# Plotting a generation
+function plot_generation_by(
+    g::Generation,
+    key_x::Symbol, # x axis variable
+    key_y::Symbol, # y axis variable
+    crits,  # Criteria to group agents (function or vector of functions)
+    labs;   # Labels for each group
+    lwidth::Int=1
+)
+    # Preliminaries
+    xx = getproperty(g.S, key_x)
+    yy = key_y==:v ? g.v : getproperty(g.G, key_y)
+    p=plot()
+    # Create plot
+    for (crit, lab) in zip(crits(g), labs)
+        plot!(xx[crit], yy[crit], label=lab, linewidth=lwidth)
+    end
+    return p
+end
+
+function plot_generation_by(gens::Vector{<:Generation}, args...; kwargs...)
+    # Preliminaries
+    N_g = size(gens,1)
+    gen_plots = Array{Plots.Plot}(undef, N_g)
+    for (ig,g) in pairs(gens)
+        # Get the plot for the generation
+        gen_plots[ig] = plot_generation_by(g, args...; kwargs...)
+    end
+    return gen_plots
+end
+
 function plot_by_group(
     xx::Vector{<:Real}, yy::Vector{<:Real}, cfg::GraphConfig, crits, args...;
     ptype=plot!,
