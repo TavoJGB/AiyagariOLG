@@ -60,8 +60,8 @@ function ss_mobility(eco::Economía;
     nt::Int,    # number of periods ahead in the future
     nq::Int=5
 )
-    @unpack hh, pr = eco
-    @unpack gens = hh
+    @unpack hh, pr = eco;
+    @unpack gens = hh;
     # Assemble relevant variables
     Qs = getproperty.(gens[1:nt], :Q)
     newby_distr = gens[1].distr

@@ -143,8 +143,21 @@ function _quantile_vecs!(
     # First quantile (it's special because it has no lower bound)
     _quantile_vecs!(rows, cols, vals, BottomQuantile(), ind_L[1], ind_U[1], wgt[1], N; qs=1)
     # Middle quantiles
-    for (iq, qq) in zip(2:length(qs)-1, qs[2:end-1])
+    for (iq, qq) in zip(2:(length(qs)-1), qs[2:(end-1)])
         n = ind_U[iq]-ind_L[iq-1]
+        if n<=1 # Skip quantiles with no individuals
+            @warn "Quantile $(qq) does not have enough individuals assigned. Skipping."
+            continue
+            #= Otherwise, I'd get the following error:
+
+            ERROR: ArgumentError: invalid GenericMemory size: too large for system address width
+            Stacktrace:
+            [1] GenericMemory
+                @ .\boot.jl:516 [inlined]
+            [...]
+            
+            =#
+        end
         append!(rows, fill(qq, n))
         append!(cols, ind_U[iq-1]:ind_U[iq])
         append!(vals, [wgt[iq-1]; ones(Float64, n-2); 1-wgt[iq]])
@@ -208,19 +221,19 @@ end
 
 # Matrix to help with the computation of quantiles
 function quantile_matrix(
-    divs::Vector{<:Real}, var::Vector{<:Real}, distr::Vector{<:Real};
+    divs::Vector{<:Real}, varvals::Vector{<:Real}, distr::Vector{<:Real};
     qtype::QuantileType=BasicQuantile()
 )::SparseMatrixCSC
     nq = size(divs,1)+1
     # Rank nodes from lower to higher values
-    iSort = sortperm(var)
+    iSort = sortperm(varvals)
     # Cumulative distribution
     sorted_distr = distr[iSort]
     cum_distr = cumsum(sorted_distr) / sum(sorted_distr)
     # Matrix with indicators of quantiles
     rows, cols, vals = quantile_vecs(qtype, divs, cum_distr)
     # Recover the original order
-    return sparse(rows, iSort[cols], vals, nq, size(var,1))
+    return sparse(rows, iSort[cols], vals, nq, size(varvals,1))
 end
 function quantile_matrix(
     vecvec_divs::Vector{<:Vector{<:Real}}, var::Vector{<:Real}, distr::Vector{<:Real};
