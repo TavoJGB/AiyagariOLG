@@ -175,6 +175,7 @@ end
 mutable struct PolicyFunctions
     c::Vector{<:Real}
     a′::Vector{<:Real}
+    # Constructors
     function PolicyFunctions(N::Int)
         c = Array{Float64}(undef, N)
         a′ = Array{Float64}(undef, N)
@@ -213,6 +214,17 @@ struct Generation{Tg<:AbstractGenerationType} <: AgentGroup
 end
 Base.size(g::Generation) = g.N
 
+# Methods to get pairs of subsequent generations
+abstract type ZipDirection end
+struct ZipBackwards <: ZipDirection end
+struct ZipForward <: ZipDirection end
+Base.zip(::ZipBackwards, gens::Vector{Generation}) = zip(gens[(end-1):-1:1], gens[end:-1:2])
+Base.zip(::ZipForward, gens::Vector{Generation}) = zip(gens[2:end], gens[1:(end-1)])
+# Test:
+# for (g,g′) in zip(ZipBackwards(), gens)
+#     println("Age g: $(g.age). Age g′: $(g′.age).")
+# end
+
 
 
 #===========================================================================
@@ -225,6 +237,7 @@ struct Households
     pref::Preferencias
     process_z::MarkovProcess
     grid_a::AbstractGrid
+    # Constructors
     function Households(;
         ages::AbstractVector, tipo_pref, process_z::MarkovProcess, grid_a::AbstractGrid, kwargs...
     )
@@ -262,6 +275,7 @@ get_preference_parameters() = [:tipo_pref, :β, :γ]
 grids(hh::Households) = hh.process_z.grid, hh.grid_a
 assemble(x, key::Symbol) = vcat(getproperty.(x, key)...)
 assemble(x, key1::Symbol, key2::Symbol) = assemble(assemble(x, key1), key2)
+assemble(gens::Vector{Generation}, f::Function, args...) = vcat([f(g, args...) for g in gens]...)
 # Example: assemble(gens, :states, :z) will return a vector of all z states across generations.
 
 

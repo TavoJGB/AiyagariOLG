@@ -105,9 +105,8 @@ function hh_solve!(eco::Economía, cfg::Configuration)::Nothing
     # Update policy functions for each generation
     aux_get_guess(gg::Generation) = gg.G.c
     solve!(cfg_hh, aux_get_guess, gens[end], EGM_iter!, pr)   # last generation
-    for (ig, g) in enumerate(gens[(end-1):-1:1])  # previous generations
-        c′ = gens[ig+1].G.c
-        solve!(cfg_hh, aux_get_guess, g, EGM_iter!, pr, c′, pref, process_z, grid_a)
+    for (g, g′) in zip(ZipBackwards(), gens)  # previous generations
+        solve!(cfg_hh, aux_get_guess, g, EGM_iter!, pr, g′.G.c, pref, process_z, grid_a)
     end
     # Q-transition matrix
     Q_matrix!(hh)
@@ -146,9 +145,8 @@ end
 function value!(hh::Households)::Nothing
     @unpack gens, pref = hh
     value!(gens[end], pref)
-    for (ig, g) in enumerate(gens[(end-1):-1:1])
-        v′ = gens[ig+1].v
-        value!(g, pref, v′)
+    for (g, g′) in zip(ZipBackwards(), gens)
+        value!(g, pref, g′.v)
     end
     # hh.gens .= gens
     return nothing
@@ -267,8 +265,8 @@ function Q_matrix!(hh::Households)::Nothing
     @unpack gens, process_z, grid_a = hh
     # Compute Q-transition matrix for each generation
     Q_matrix!(gens[end])
-    for (ig, g) in enumerate(gens[(end-1):-1:1])
-        Q_matrix!(g, gens[ig+1].states, process_z.Π, grid_a)
+    for (g, g′) in zip(ZipBackwards(), gens)
+        Q_matrix!(g, g′.states, process_z.Π, grid_a)
     end
     return nothing    
 end
@@ -287,8 +285,8 @@ function distribution!(gg::Generation{<:Newby}, grid_a, process_z, N_g::Int)::No
     gg.distr .= distr
     return nothing
 end
-function distribution!(gg::Generation, prev_distr::Vector{<:Real})::Nothing
-    gg.distr .= gg.Q*prev_distr
+function distribution!(gg::Generation, prev_Q::SparseMatrixCSC, prev_distr::Vector{<:Real})::Nothing
+    gg.distr .= prev_Q*prev_distr
     return nothing
 end
 function distribution!(hh::Households)::Nothing
@@ -297,8 +295,8 @@ function distribution!(hh::Households)::Nothing
     # Compute distribution for the youngest generation
     distribution!(gens[1], grid_a, process_z, N_g)
     # Compute distribution for the rest of generations
-    for (i_younger, g) in enumerate(gens[2:end])
-        distribution!(g, gens[i_younger].distr)
+    for (g, g_prev) in zip(ZipForward(), gens)
+        distribution!(g, g_prev.Q, g_prev.distr)
     end
     return nothing
 end
