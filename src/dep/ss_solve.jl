@@ -328,9 +328,9 @@ end
     STEADY STATE
 ===========================================================================#
 
-function steady(hh0::Households, fm0::Firms, cfg::Configuration; r_0)
+function steady(hh0::Households, fm::Firms, cfg::Configuration; r_0)
     # Initialise economy
-    eco = Economía(r_0, deepcopy(hh0), fm0, cfg.years_per_period)
+    eco = Economía(r_0, deepcopy(hh0), fm, cfg.years_per_period);
     # General equilibrium
     solve!(cfg.cfg_r, r_0, K_market!, eco, cfg)
     # Update value function

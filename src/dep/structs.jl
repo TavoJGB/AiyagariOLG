@@ -211,8 +211,29 @@ struct Generation{Tg<:AbstractGenerationType} <: AgentGroup
     # Other
     Q::SparseMatrixCSC
     distr::Vector{<:Real}
+    function Generation(type::AbstractGenerationType, age::Real, grid_z::AbstractGrid, grid_a::AbstractGrid)
+        # Matrix of state indices
+        states = StateIndices(; N_z=size(grid_z), N_a=size(grid_a))
+        # Number of agents in a generation
+        N = size(states.a, 1)
+        # State variables
+        zz = get_node.(Ref(grid_z), states.z)
+        aa = get_node.(Ref(grid_a), states.a)
+        S = StateVariables(zz, aa)
+        # Initialise policy functions
+        G = PolicyFunctions(N)
+        # Initialise value function
+        vv = similar(zz)
+        # Initialise Q-transition matrix
+        Q = spzeros(N, N)
+        # Initialise distribution
+        distr = fill(1/N, N)
+        # Return structure
+        return new{typeof(type)}(age, N, states, S, G, vv, Q, distr)
+    end
 end
 Base.size(g::Generation) = g.N
+get_N_agents(gens::Vector{Generation}) = sum(assemble(gens, :N))
 
 # Methods to get pairs of subsequent generations
 abstract type ZipDirection end
@@ -243,31 +264,16 @@ struct Households
     )
         # Unpack
         grid_z = process_z.grid
-        N_g = length(ages)
-        # Matrix of state indices
-        states = StateIndices(; N_z=size(process_z), N_a=size(grid_a))
-        # Number of agents
-        N_in_g = size(states.a, 1)  # in a generation
-        N = N_in_g*N_g              # in total
         # Preferences
         pref = Preferencias(tipo_pref; kwargs...)
-        # Initialise Q-transition matrix
-        Q = spzeros(N_in_g, N_in_g)
-        # Initialise distribution
-        distr = fill(1/N_in_g, N_in_g)
-        # State variables
-        zz = get_node.(Ref(grid_z), states.z)
-        aa = get_node.(Ref(grid_a), states.a)
-        S = StateVariables(zz, aa)
-        # Initialise policy functions
-        G = PolicyFunctions(N_in_g)
-        # Initialise value function
-        vv = similar(zz)
         # Vector of generations
-        gens = [Generation{StandardGen}(age, N_in_g, states, S, G, vv, Q, distr) for age in ages[2:(end-1)]]
-        gens = vcat(Generation{Newby}(ages[1], N_in_g, states, S, G, vv, Q, distr),
+        gens = [Generation(StandardGen(), age, grid_z, grid_a) for age in ages[2:(end-1)]]
+        gens = vcat(Generation(Newby(), ages[1], grid_z, grid_a),
                     gens,
-                    Generation{Oldest}(ages[end], N_in_g, states, S, G, vv, Q, distr))
+                    Generation(Oldest(), ages[1], grid_z, grid_a))
+        # Total number of agents
+        N = get_N_agents(gens)
+        # Return structure
         return new(N, gens, pref, process_z, grid_a)
     end
 end
