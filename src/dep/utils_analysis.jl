@@ -21,11 +21,15 @@ end
 abstract type AbstractTiming end
 struct EndOfPeriod <: AbstractTiming end
 struct BeginningOfPeriod <: AbstractTiming end
+get_saving_symbols(::EndOfPeriod) = (:G, :a′)
+get_saving_symbols(::BeginningOfPeriod) = (:states, :a)
 
 # Borrowing contrained agents: end-of-period assets
-function get_borrowing_constrained(a′, min_a)
-    return a′ .<= min_a
+get_borrowing_constrained(a′, min_a) = a′ .<= min_a
+function get_borrowing_constrained(::EndOfPeriod, gens::Vector{<:Generation}, min_a)
+    return vcat([get_borrowing_constrained(g.G.a′, min_a) for g in gens]...)
 end
+
 function get_borrowing_constrained(::EndOfPeriod, hh::Households)
     @unpack gens, grid_a = hh
     a′ = assemble(gens, :G, :a′)
@@ -33,10 +37,14 @@ function get_borrowing_constrained(::EndOfPeriod, hh::Households)
 end
 
 # Borrowing contrained agents: beggining-of-period assets
-function get_borrowing_constrained(::BeginningOfPeriod, hh::Households)
-    @unpack gens = hh
+function get_borrowing_constrained(::BeginningOfPeriod, gens::Vector{<:Generation})
     return vcat([identify_group(g.states, :a, 1) for g in gens]...)
 end
+get_borrowing_constrained(::BeginningOfPeriod, hh::Households) = get_borrowing_constrained(BeginningOfPeriod(), hh.gens)
+
+# By default: beginning-of-period assets
+get_borrowing_constrained(gens::Vector{Generation}) = get_borrowing_constrained(BeginningOfPeriod(), gens)
+get_borrowing_constrained(hh::Households) = get_borrowing_constrained(BeginningOfPeriod(), hh)
 
 
 

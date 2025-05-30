@@ -5,15 +5,15 @@
 # Error in optimality conditions
 function err_euler(
     c::Vector{<:Real}, pref::Preferencias, Q::AbstractMatrix, r′::Real;
-    c′::Vector{<:Real}=c
+    c′::Vector{<:Real}
 )
     @unpack β, u′ = pref
     return u′.(c) - β*(1+r′) * Q' * u′.(c′)
 end
 function err_euler(eco::Economía)
-    @unpack hh, pr, Q = eco
-    @unpack pref, G = hh
-    return err_euler(G.c, pref, Q, pr.r)
+    @unpack hh, pr = eco
+    @unpack pref, gens = hh
+    return vcat([ err_euler(g.G.c, pref, g.Q, pr.r; c′=g′.G.c) for (g, g′) in zip(ZipBackwards(), gens) ]...)
 end
 function err_budget(G::PolicyFunctions, prices::Prices, S::StateVariables)
     @unpack c, a′ = G

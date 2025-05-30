@@ -14,7 +14,7 @@ module AiyagariOLG
 
     # Load dependencies
     include("./dep/structs.jl")
-        export Households, Firms, Economía, Aggregates
+        export Households, Firms, Economía, Aggregates, assemble
     include("./dep/utils_computation.jl")
         export EGM, LinearJumps
     include("./dep/utils_analysis.jl")

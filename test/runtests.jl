@@ -4,7 +4,7 @@ using Test
 
 # Loading main module and dependencies
 using AiyagariOLG
-import AiyagariOLG: err_euler, err_budget, get_borrowing_constrained, get_r
+import AiyagariOLG: err_euler, err_budget, get_borrowing_constrained, get_r, ZipForward, ZipBackward
 using AiyagariOLG.LinearAlgebra
 using AiyagariOLG.Parameters
 include("./dep/utils_test.jl")
