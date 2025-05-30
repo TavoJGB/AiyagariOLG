@@ -1,6 +1,6 @@
 # Household parameters
 tipo_pref=CRRA()
-β=0.94
+β=0.97
 γ=1.5
 # Firm parameters
 α=1/3
@@ -8,7 +8,7 @@ tipo_pref=CRRA()
 # Idiosyncratic shock parameters
 N_z=5
 tipo_z=DiscreteAR1
-ρ_z=0.92
+ρ_z=0.90
 σ_z=0.20
 # Asset-grid parameters
 tipo_a=CurvedGrid

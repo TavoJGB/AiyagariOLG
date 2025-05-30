@@ -328,8 +328,10 @@ end
 ===========================================================================#
 
 function steady(hh0::Households, fm::Firms, cfg::Configuration; r_0)
+    @unpack years_per_period = cfg
     # Initialise economy
-    eco = Economía(r_0, deepcopy(hh0), fm, cfg.years_per_period);
+    r_0 = deannualise(r_0, years_per_period)
+    eco = Economía(r_0, deepcopy(hh0), fm, years_per_period);
     # General equilibrium
     solve!(cfg.cfg_r, r_0, K_market!, eco, cfg)
     # Update value function
@@ -371,6 +373,9 @@ end
 function annualise!(pr::Prices, years_per_period::Real)::Nothing
     pr.r = (1+pr.r)^(1/years_per_period) - 1
     return nothing
+end
+function deannualise(r_annual::Real, years_per_period::Real)
+    return (1+r_annual)^years_per_period - 1
 end
 function annualise!(agg::Aggregates, years_per_period::Real)::Nothing
     agg.Y /= years_per_period
