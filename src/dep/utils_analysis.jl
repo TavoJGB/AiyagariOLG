@@ -354,27 +354,28 @@ function tiled_plot(vec_plots::Vector{Plots.Plot}, cfg::GraphConfig, tit::String
     return tiledplot
 end
 
-# Plotting a generation
+# Plotting a generation by groups
 function plot_generation_by(
     g::Generation,
-    key_x::Symbol, # x axis variable
-    key_y::Symbol, # y axis variable
-    crits,  # Criteria to group agents (function or vector of functions)
-    labs;   # Labels for each group
+    key_x::Symbol,              # x axis variable
+    key_y::Symbol;              # y axis variable
+    ptype=plot!,                # Plotting function
+    crits= g->[trues(size(g))], # Criteria to group agents (function or vector of functions)
+    labs="",                    # Labels for each group
     lwidth::Int=1
 )
     # Preliminaries
     xx = getproperty(g.S, key_x)
-    yy = key_y==:v ? g.v : getproperty(g.G, key_y)
+    yy = key_y ∈ [:v,:distr] ? getproperty(g,key_y) : getproperty(g.G, key_y)
     p=plot()
     # Create plot
     for (crit, lab) in zip(crits(g), labs)
-        plot!(xx[crit], yy[crit], label=lab, linewidth=lwidth)
+        ptype(xx[crit], yy[crit], label=lab, linewidth=lwidth)
     end
     return p
 end
 
-# Vector of plots (one for each generation in a vector of generations)
+# Vector of plots by groups (one for each generation in a vector of generations)
 function plot_generation_by(gens::Vector{<:Generation}, args...; kwargs...)
     # Preliminaries
     N_g = size(gens,1)
@@ -386,15 +387,43 @@ function plot_generation_by(gens::Vector{<:Generation}, args...; kwargs...)
     return gen_plots
 end
 
-# Plotting a generation
-function plot_generation_apol_by(malla_a, args...; lwidth::Int=1)
-    plots_apol = plot_generation_by(args...; lwidth)
+# Specific methods (savings policy function, distribution, etc.)
+function plot_generation_apol_by(malla_a, args...; lwidth::Int=1, kwargs...)
+    plots_apol = plot_generation_by(args...; lwidth, kwargs...)
     for p in plots_apol
         plot!(p, malla_a, malla_a, line=(lwidth, :dot), color=:darkgray, label="a' = a")
     end
     return plots_apol
 end
+function plot_generation_distr(
+    g::Generation, malla_x::Vector{<:Real}, key_x::Symbol;
+    f_agg::Function=sum, lwidth::Int=1, sum_one::Bool=false
+)
+    # Preliminaries
+    @unpack states, distr = g
+    x = getproperty(states, key_x)
+    N_x = size(malla_x,1)
+    # Aggregation
+    distr_x = [f_agg(distr[ind]) for ind in eachcol(x .== (1:N_x)')]
+    if (sum_one) distr_x ./= sum(distr_x) end # Normalise to sum to 1
+    # Plot
+    return plot(malla_x, distr_x, label="", linewidth=lwidth)
+end
+# I could get rid of the method below if I generalise the method "plot_generation_by"
+function plot_generation_distr(gens::Vector{<:Generation}, args...; kwargs...)
+    # Preliminaries
+    N_g = size(gens,1)
+    gen_plots = Array{Plots.Plot}(undef, N_g)
+    for (ig,g) in pairs(gens)
+        # Get the plot for the generation
+        gen_plots[ig] = plot_generation_distr(g, args...; kwargs...)
+        plot!(title=get_age_range(g))
+    end
+    return gen_plots
+end
 
+
+## OLD
 function plot_by_group(
     xx::Vector{<:Real}, yy::Vector{<:Real}, cfg::GraphConfig, crits, args...;
     ptype=plot!,

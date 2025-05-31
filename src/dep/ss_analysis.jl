@@ -191,12 +191,12 @@ end
 function ss_graphs(eco::Economía, cfg::GraphConfig)::Nothing
     # PRELIMINARIES
     # Unpacking
-    @unpack hh, pr = eco
-    @unpack process_z, grid_a, gens = hh
-    @unpack w = pr
+    @unpack hh, pr = eco;
+    @unpack process_z, grid_a, gens = hh;
+    @unpack w = pr;
     # Combine generations (if needed)
-    @unpack figpath, combine_gens = cfg
-    red_gens = combine(gens, combine_gens)
+    @unpack figpath, combine_gens = cfg;
+    red_gens = combine(gens, combine_gens);
     # Assemble states and policy functions
     a′ = assemble(gens, :G, :a′)
     c = assemble(gens, :G, :c)
@@ -210,34 +210,30 @@ function ss_graphs(eco::Economía, cfg::GraphConfig)::Nothing
 
     # POLICY FUNCTIONS (by productivity group)
     # Savings
-    tiled_plot(plot_generation_apol_by(grid_a.nodes, gens, :a, :a′, crit_z, ["Min z", "Max z"]; cfg.lwidth), cfg, "Policy functions: savings")
+    tiled_plot(plot_generation_apol_by(grid_a.nodes, gens, :a, :a′; crits=crit_z, labs=["Min z", "Max z"], cfg.lwidth), cfg, "Policy functions: savings, by age group")
     Plots.savefig(figpath * "ss_apol.png")
     # Consumption
-    tiled_plot(plot_generation_by(gens, :a, :c, crit_z, ["Min z", "Max z"]; cfg.lwidth), cfg, "Policy functions: consumption")
+    tiled_plot(plot_generation_by(gens, :a, :c; crits=crit_z, labs=["Min z", "Max z"], cfg.lwidth), cfg, "Policy functions: consumption, by age group")
     Plots.savefig(figpath * "ss_cpol.png")
 
     # VALUE FUNCTION (by productivity group)
-    tiled_plot(plot_generation_by(gens, :a, :v, crit_z, ["Min z", "Max z"]; cfg.lwidth), cfg, "Value functions")
+    tiled_plot(plot_generation_by(gens, :a, :v; crits=crit_z, labs=["Min z", "Max z"], cfg.lwidth), cfg, "Value functions by age group")
     Plots.savefig(figpath * "ss_value.png")
 
     # WEALTH DISTRIBUTION (by productivity group)
-    plot_histogram_by_group(
-        a, distr, cfg, [1;N_z], states, :z;
-        leglabs=["low z", "high z"], tit="Asset distribution"
-    )
+    tiled_plot(plot_generation_by(gens, :a, :distr; crits=crit_z, labs=["Min z", "Max z"], cfg.lwidth), cfg, "Asset distribution by age group")
+    Plots.savefig(figpath * "ss_asset_distr.png")
+    aux_stephist!(xx, yy, args...; kwargs...) = stephist!(xx, args...; weights=yy, kwargs...)
+    tiled_plot(plot_generation_distr(red_gens, grid_a.nodes, :a; cfg.lwidth), cfg, "Asset distribution by age group")
     Plots.savefig(figpath * "ss_asset_hist.png")
-    # plot_by_group(
-    #     a, distr, cfg, [1;N_z], :z,
-    #     leglabs=["low z", "high z"], tit="Asset distribution")
-    # Plots.savefig(figpath * "ss_asset_distr.png")
 
-    # EULER ERRORS (by productivity group)
-    errs_eu = err_euler(eco)
-    unconstr = .!get_borrowing_constrained(eco)
+    # EULER ERRORS (by productivity group, ignore oldest generation)
+    errs_eu = err_euler(eco; complete=true)
+    unconstr = (.!get_borrowing_constrained(gens, grid_a.min) .& .!isnan.(errs_eu))
     errs_labs = repeat([""], N_z)
     errs_labs[[1,N_z]] .= ["low z", "high z"]
     plot_by_group(
-        a[unconstr], errs_eu[unconstr], cfg, 1:N_z, hh.states.z[unconstr];
+        a[unconstr], errs_eu[unconstr], cfg, 1:N_z, assemble(gens,:states,:z)[unconstr];
         ptype=scatter!, leglabs=errs_labs, tit="Euler Errors")
     Plots.savefig(figpath * "ss_euler_err.png")
     return nothing

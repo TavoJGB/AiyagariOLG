@@ -10,10 +10,16 @@ function err_euler(
     @unpack β, u′ = pref
     return u′.(c) - β*(1+r′) * Q' * u′.(c′)
 end
-function err_euler(eco::Economía)
+function err_euler(eco::Economía; complete::Bool=false)
     @unpack hh, pr = eco
     @unpack pref, gens = hh
-    return vcat([ err_euler(g.G.c, pref, g.Q, pr.r; c′=g′.G.c) for (g, g′) in zip_backward(gens) ]...)
+    # Compute euler errors for all generations but last one
+    errs = vcat([ err_euler(g.G.c, pref, g.Q, pr.r; c′=g′.G.c) for (g, g′) in zip_backward(gens) ]...)
+    if (complete)   # add NaN for oldest generation
+        return vcat(errs, fill(NaN, size(gens[end])))
+    else
+        return errs
+    end
 end
 function err_budget(G::PolicyFunctions, prices::Prices, S::StateVariables)
     @unpack c, a′ = G
