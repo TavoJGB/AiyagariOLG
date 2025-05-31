@@ -225,6 +225,7 @@ struct Generation{Tg<:AbstractGenerationType} <: AgentGroup
     # Other
     Q::SparseMatrixCSC
     distr::Vector{<:Real}
+    euler_errors::Vector{<:Real}
 end
 # Initialiser
 function Generation(type::AbstractGenerationType, min_age::Int, max_age::Int, grid_z::AbstractGrid, grid_a::AbstractGrid)
@@ -244,8 +245,10 @@ function Generation(type::AbstractGenerationType, min_age::Int, max_age::Int, gr
     Q = spzeros(N, N)
     # Initialise distribution
     distr = fill(1/N, N)
+    # Initialise euler errors
+    euler_errs = similar(distr)
     # Return structure
-    return Generation{typeof(type)}(min_age, max_age, N, states, S, G, vv, Q, distr)
+    return Generation{typeof(type)}(min_age, max_age, N, states, S, G, vv, Q, distr, euler_errs)
 end
 # Methods
 Base.size(g::Generation) = g.N
@@ -266,6 +269,7 @@ function combine(gens::Vector{Generation})
     v = assemble(gens, :v)
     Q = sparse([1],[1],[NaN],1,1)
     distr = assemble(gens, :distr)
+    euler_errors = assemble(gens, :euler_errors)
     # Other variables
     min_age = minimum(min_ages)
     max_age = maximum(max_ages)
@@ -275,7 +279,7 @@ function combine(gens::Vector{Generation})
     S = StateVariables(z, a)
     G = PolicyFunctions(c, a′)
     # Create combined generation
-    return Generation{CombinedGen}(min_age, max_age, N, states, S, G, v, Q, distr)
+    return Generation{CombinedGen}(min_age, max_age, N, states, S, G, v, Q, distr, euler_errors)
 end
 function combine(gens::Vector{Generation}, howmany::Int)
     howmany==1 && return gens  # don't do anything if howmany == 1

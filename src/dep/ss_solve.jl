@@ -10,16 +10,38 @@ function err_euler(
     @unpack β, u′ = pref
     return u′.(c) - β*(1+r′) * Q' * u′.(c′)
 end
-function err_euler(eco::Economía; complete::Bool=false)
-    @unpack hh, pr = eco
-    @unpack pref, gens = hh
+function err_euler(gens::Vector{<:Generation}, pref::Preferencias, r′::Real; complete::Bool=false)
     # Compute euler errors for all generations but last one
-    errs = vcat([ err_euler(g.G.c, pref, g.Q, pr.r; c′=g′.G.c) for (g, g′) in zip_backward(gens) ]...)
+    errs = vcat([ err_euler(g.G.c, pref, g.Q, r′; c′=g′.G.c) for (g, g′) in zip_backward(gens) ]...)
     if (complete)   # add NaN for oldest generation
         return vcat(errs, fill(NaN, size(gens[end])))
     else
         return errs
     end
+end
+function err_euler(eco::Economía; kwargs...)
+    @unpack hh, pr = eco
+    @unpack pref, gens = hh
+    # Compute euler errors for all generations but last one
+    return err_euler(gens, pref, pr.r; kwargs...)
+end
+function err_euler!(g::Generation{<:Oldest})::Nothing
+    g.euler_errors .= NaN
+    return nothing
+end
+function err_euler!(g::Generation, pref::Preferencias, r′::Real, c′)::Nothing
+    g.euler_errors .= err_euler(g.G.c, pref, g.Q, r′; c′=c′)
+    return nothing
+end
+function err_euler!(hh::Households, r′)::Nothing
+    @unpack gens, pref = hh
+    # Compute euler errors for the oldest generation
+    err_euler!(gens[end])
+    # Compute distribution for the rest of generations
+    for (g, g′) in zip_backward(gens)
+        err_euler!(g, pref, r′, g′.G.c)
+    end
+    return nothing
 end
 function err_budget(G::PolicyFunctions, prices::Prices, S::StateVariables)
     @unpack c, a′ = G
@@ -104,9 +126,9 @@ end
 
 # All households
 function hh_solve!(eco::Economía, cfg::Configuration)::Nothing
-    @unpack hh, fm, pr = eco
-    @unpack gens, pref, process_z, grid_a = hh
-    @unpack cfg_hh = cfg
+    @unpack hh, fm, pr = eco;
+    @unpack gens, pref, process_z, grid_a = hh;
+    @unpack cfg_hh = cfg;
     # Update policy functions for each generation
     aux_get_guess(gg::Generation) = gg.G.c
     solve!(cfg_hh, aux_get_guess, gens[end], EGM_iter!, pr)   # last generation
@@ -114,7 +136,7 @@ function hh_solve!(eco::Economía, cfg::Configuration)::Nothing
         solve!(cfg_hh, aux_get_guess, g, EGM_iter!, pr, g′.G.c, pref, process_z, grid_a)
     end
     # Q-transition matrix
-    Q_matrix!(hh)
+    Q_matrix!(eco.hh)
     # Stationary distribution
     distribution!(eco.hh)
     return nothing
@@ -340,8 +362,9 @@ function steady(hh0::Households, fm::Firms, cfg::Configuration; r_0)
     eco = Economía(r_0, deepcopy(hh0), fm, years_per_period);
     # General equilibrium
     solve!(cfg.cfg_r, r_0, K_market!, eco, cfg)
-    # Update value function
+    # Update value function and Euler errors
     value!(eco.hh)
+    err_euler!(eco.hh, eco.pr.r)    # avoid computing them after annualisation
     # Return the steady state economy
     return eco
 end

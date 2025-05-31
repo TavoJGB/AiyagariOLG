@@ -395,6 +395,24 @@ function plot_generation_apol_by(malla_a, args...; lwidth::Int=1, kwargs...)
     end
     return plots_apol
 end
+function plot_euler_errors(hh::Households, r′::Real, cfg::GraphConfig)
+    # Preliminaries
+    @unpack gens, grid_a, pref, process_z = hh
+    N_z = size(process_z)
+    a = assemble(gens, :S, :a)
+    # Get errors
+    errs_eu = assemble(gens, :euler_errors)
+    # They only matter for unconstrained agents with life ahead
+    unconstr = (.!get_borrowing_constrained(gens, grid_a.min) .& .!isnan.(errs_eu))
+    # Labels (only for min and max z)
+    errs_labs = repeat([""], N_z)
+    errs_labs[[1,N_z]] .= ["low z", "high z"]
+    # Plot
+    return  plot_by_group(
+                a[unconstr], errs_eu[unconstr], cfg, 1:N_z, assemble(gens,:states,:z)[unconstr];        
+                ptype=scatter!, leglabs=errs_labs, tit="Euler Errors"
+            )
+end
 function plot_generation_distr(
     g::Generation, malla_x::Vector{<:Real}, key_x::Symbol;
     f_agg::Function=sum, lwidth::Int=1, sum_one::Bool=false

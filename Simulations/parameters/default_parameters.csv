@@ -14,7 +14,7 @@ tipo_z=DiscreteAR1
 tipo_a=CurvedGrid
 N_a=150
 min_a=0
-max_a=10.0
+max_a=50.0
 curv_a=1/4
 # Life-cycle parameters
 min_age=20

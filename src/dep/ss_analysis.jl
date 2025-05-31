@@ -228,13 +228,7 @@ function ss_graphs(eco::Economía, cfg::GraphConfig)::Nothing
     Plots.savefig(figpath * "ss_asset_hist.png")
 
     # EULER ERRORS (by productivity group, ignore oldest generation)
-    errs_eu = err_euler(eco; complete=true)
-    unconstr = (.!get_borrowing_constrained(gens, grid_a.min) .& .!isnan.(errs_eu))
-    errs_labs = repeat([""], N_z)
-    errs_labs[[1,N_z]] .= ["low z", "high z"]
-    plot_by_group(
-        a[unconstr], errs_eu[unconstr], cfg, 1:N_z, assemble(gens,:states,:z)[unconstr];
-        ptype=scatter!, leglabs=errs_labs, tit="Euler Errors")
+    plot_euler_errors(hh, pr.r, cfg)
     Plots.savefig(figpath * "ss_euler_err.png")
     return nothing
 end

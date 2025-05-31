@@ -1,6 +1,6 @@
 # Household parameters
 tipo_pref=CRRA()
-β=0.94
+β=0.97
 γ=1.5
 # Firm parameters
 α=1/3
@@ -8,13 +8,13 @@ tipo_pref=CRRA()
 # Idiosyncratic shock parameters
 N_z=5
 tipo_z=DiscreteAR1
-ρ_z=0.94
+ρ_z=0.90
 σ_z=0.20
 # Asset-grid parameters
 tipo_a=CurvedGrid
 N_a=150
 min_a=0
-max_a=60.0
+max_a=50.0
 curv_a=1/4
 # Life-cycle parameters
 min_age=20
@@ -33,7 +33,8 @@ cfg_hh_tol=1e-6
 cfg_hh_maxit=1000
 # Graphs configuration
 cfg_graph_figpath="./Figuras/"
-cfg_graph_plotsiz="800x600"
-cfg_graph_fsize=14
-cfg_graph_leg_fsize=14
+cfg_graph_plotsiz="1600x900"
+cfg_graph_fsize=12
+cfg_graph_leg_fsize=10
 cfg_graph_lwidth=2
+cfg_graph_combine_gens=2
