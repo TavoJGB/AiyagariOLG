@@ -64,6 +64,9 @@ end
     GRIDS
 ===========================================================================#
 
+abstract type AbstractGridType end
+struct Curved <: AbstractGridType end
+
 abstract type AbstractGrid end
 
 struct BasicGrid <: AbstractGrid
@@ -101,6 +104,21 @@ Base.size(grid::AbstractGrid) = grid.N
 Base.length(grid::AbstractGrid) = grid.N
 function get_node(grid::AbstractGrid, i::Int)
     return grid.nodes[i]
+end
+
+# Age Dependent 
+struct CombinedGrid <: AbstractGrid
+    grids::Vector{<:AbstractGrid}
+    CombinedGrid(grids::Vector{<:AbstractGrid}) = new(grids)
+    CombinedGrid(::Curved; kwargs...) = get_AgeDependentCurvedGrid(; kwargs...)
+end
+function get_AgeDependentCurvedGrid(;
+    max::Real, ages::AbstractVector, gscale_max::Real, age_peak::Real=sum(ages)/size(ages,1), kwargs...
+)
+    g_peak = findlast(ages .<= age_peak)
+    N_g = size(ages,1)
+    g_max_a = range(max, gscale_max*max; length=(1+maximum([g_peak-1,N_g-g_peak])))[abs.((1:N_g) .-  (g_peak)) .+ 1]
+    return [_CurvedGrid(; max=max_a, kwargs...) for max_a in g_max_a]
 end
 
 
@@ -216,6 +234,8 @@ struct Generation{Tg<:AbstractGenerationType} <: AgentGroup
     min_age::Int
     max_age::Int
     N::Int
+    # Assets grid
+    grid_a::AbstractGrid
     # States and policy functions
     states::AbstractStateIndices
     S::StateVariables
@@ -248,15 +268,15 @@ function Generation(type::AbstractGenerationType, min_age::Int, max_age::Int, gr
     # Initialise euler errors
     euler_errs = similar(distr)
     # Return structure
-    return Generation{typeof(type)}(min_age, max_age, N, states, S, G, vv, Q, distr, euler_errs)
+    return Generation{typeof(type)}(min_age, max_age, N, grid_a, states, S, G, vv, Q, distr, euler_errs)
 end
 # Methods
 Base.size(g::Generation) = g.N
-get_N_agents(gens::Vector{Generation}) = sum(assemble(gens, :N))
+get_N_agents(gens::Vector{<:Generation}) = sum(assemble(gens, :N))
 get_age_range(g::Generation) = string(g.min_age, "-", g.max_age)
 
 # Combine generations
-function combine(gens::Vector{Generation})
+function combine(gens::Vector{<:Generation})
     # Assemble variables
     min_ages = assemble(gens, g -> fill(g.min_age, g.N))
     max_ages = assemble(gens, g -> fill(g.max_age, g.N))
@@ -275,13 +295,15 @@ function combine(gens::Vector{Generation})
     max_age = maximum(max_ages)
     N = length(z)
     # Structures
-    states = CombinedStateIndices(min_ages, iz, ia)
+    grids_a = CombinedGrid([g.grid_a for g in gens])
+    ig = vcat([fill(i, g.N) for (i,g) in enumerate(gens)]...)
+    states = CombinedStateIndices(ig, iz, ia)
     S = StateVariables(z, a)
     G = PolicyFunctions(c, a′)
     # Create combined generation
-    return Generation{CombinedGen}(min_age, max_age, N, states, S, G, v, Q, distr, euler_errors)
+    return Generation{CombinedGen}(min_age, max_age, N, grids_a, states, S, G, v, Q, distr, euler_errors)
 end
-function combine(gens::Vector{Generation}, howmany::Int)
+function combine(gens::Vector{<:Generation}, howmany::Int)
     howmany==1 && return gens  # don't do anything if howmany == 1
     return [combine(gens[i:(i+howmany-1)]) for i in 1:howmany:length(gens)]
 end
@@ -297,24 +319,33 @@ struct Households
     gens::Vector{Generation}
     pref::Preferencias
     process_z::MarkovProcess
-    grid_a::AbstractGrid
     # Constructors
     function Households(;
-        ages::AbstractVector, tipo_pref, process_z::MarkovProcess, grid_a::AbstractGrid, kwargs...
+        ages::AbstractVector, process_z::MarkovProcess,
+        tipo_pref, pref_kwargs,
+        tipo_a, grid_kwargs
     )
         # Unpack
         grid_z = process_z.grid
         # Preferences
-        pref = Preferencias(tipo_pref; kwargs...)
+        pref = Preferencias(tipo_pref; pref_kwargs...)
+        # Min and max ages
+        min_ages = ages[1:(end-1)]
+        max_ages = ages[2:end] .- 1
+        avg_ages = (min_ages .+ max_ages) / 2
+        # Number of generations
+        N_g = length(min_ages)
+        # Age-dependent assets grids
+        grids_a = CombinedGrid(tipo_a; ages=avg_ages, grid_kwargs...)
         # Vector of generations
-        gens = [Generation(StandardGen(), min_age, max_age-1, grid_z, grid_a) for (max_age, min_age) in zip_forward(ages[2:(end-1)])]
-        gens = vcat(Generation(Newby(), ages[1], ages[2]-1, grid_z, grid_a),
+        gens = [Generation(StandardGen(), min_ages[ig], max_ages[ig], grid_z, grids_a[ig]) for ig in 2:(N_g-1)]
+        gens = vcat(Generation(Newby(), min_ages[1], max_ages[1], grid_z, grids_a[1]),
                     gens,
-                    Generation(Oldest(), ages[end-1], ages[end]-1, grid_z, grid_a))
+                    Generation(Oldest(), min_ages[end], max_ages[end], grid_z, grids_a[end]))
         # Total number of agents
         N = get_N_agents(gens)
         # Return structure
-        return new(N, gens, pref, process_z, grid_a)
+        return new(N, gens, pref, process_z)
     end
 end
 

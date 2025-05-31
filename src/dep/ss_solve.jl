@@ -90,16 +90,16 @@ function EGM_savings!(gg::Generation{<:Oldest}, args...)::Nothing
     return nothing
 end
 function EGM_savings!(
-    gg::Generation, pr::Prices, c′::Vector{<:Real},
-    pref::Preferencias, process_z::MarkovProcess, grid_a::AbstractGrid
+    gg::Generation, pr::Prices, c′::Vector{<:Real}, grid_a′::AbstractGrid,
+    pref::Preferencias, process_z::MarkovProcess
 )::Nothing
     # Unpack
     @unpack N, S, states = gg
-    malla_a = grid_a.nodes
+    malla_a = grid_a′.nodes
     # Initialise policy function for savings
     a_EGM = similar(c′)
     # Implied consumption and assets
-    c_imp = c_euler(pref, c′, process_z.Π, pr.r, N, size(grid_a))
+    c_imp = c_euler(pref, c′, process_z.Π, pr.r, N, size(grid_a′))
     a_imp = a_budget(pr, c_imp, S)
     # Invert to get policy function for savings
     for zz=1:size(process_z)
@@ -107,7 +107,7 @@ function EGM_savings!(
         a_EGM[ind_z] = interpLinear(malla_a, a_imp[ind_z], malla_a)
     end
     # Policy function bounds
-    @. a_EGM = clamp(a_EGM, grid_a.min, grid_a.max)
+    @. a_EGM = clamp(a_EGM, grid_a′.min, grid_a′.max)
     # Update policy function
     gg.G.a′ = a_EGM
     return nothing
@@ -127,13 +127,13 @@ end
 # All households
 function hh_solve!(eco::Economía, cfg::Configuration)::Nothing
     @unpack hh, fm, pr = eco;
-    @unpack gens, pref, process_z, grid_a = hh;
+    @unpack gens, pref, process_z = hh;
     @unpack cfg_hh = cfg;
     # Update policy functions for each generation
     aux_get_guess(gg::Generation) = gg.G.c
     solve!(cfg_hh, aux_get_guess, gens[end], EGM_iter!, pr)   # last generation
     for (g, g′) in zip_backward(gens)  # previous generations
-        solve!(cfg_hh, aux_get_guess, g, EGM_iter!, pr, g′.G.c, pref, process_z, grid_a)
+        solve!(cfg_hh, aux_get_guess, g, EGM_iter!, pr, g′.G.c, g′.grid_a, pref, process_z)
     end
     # Q-transition matrix
     Q_matrix!(eco.hh)
@@ -289,11 +289,11 @@ function Q_matrix!(gg::Generation, args...)::Nothing
     return nothing
 end
 function Q_matrix!(hh::Households)::Nothing
-    @unpack gens, process_z, grid_a = hh
+    @unpack gens, process_z = hh
     # Compute Q-transition matrix for each generation
     Q_matrix!(gens[end])
     for (g, g′) in zip_backward(gens)
-        Q_matrix!(g, g′.states, process_z.Π, grid_a)
+        Q_matrix!(g, g′.states, process_z.Π, g′.grid_a)
     end
     return nothing    
 end
@@ -304,8 +304,8 @@ end
     DISTRIBUTION
 ===========================================================================#
 
-function distribution!(gg::Generation{<:Newby}, grid_a, process_z, N_g::Int)::Nothing
-    @unpack N, states = gg
+function distribution!(gg::Generation{<:Newby}, process_z, N_g::Int)::Nothing
+    @unpack N, states, grid_a = gg
     i0 = findfirst(grid_a.nodes .>= 0)  # assume everyone starts with (almost) zero assets
     distr = zeros(N) # Initialise distribution
     distr[states.a .== i0] .= process_z.ss_dist/N_g
@@ -317,10 +317,10 @@ function distribution!(gg::Generation, prev_Q::SparseMatrixCSC, prev_distr::Vect
     return nothing
 end
 function distribution!(hh::Households)::Nothing
-    @unpack gens, grid_a, process_z = hh
+    @unpack gens, process_z = hh
     N_g = size(gens,1)
     # Compute distribution for the youngest generation
-    distribution!(gens[1], grid_a, process_z, N_g)
+    distribution!(gens[1], process_z, N_g)
     # Compute distribution for the rest of generations
     for (g, g_prev) in zip_forward(gens)
         distribution!(g, g_prev.Q, g_prev.distr)

@@ -26,25 +26,21 @@ get_saving_symbols(::BeginningOfPeriod) = (:states, :a)
 
 # Borrowing contrained agents: end-of-period assets
 get_borrowing_constrained(a′, min_a) = a′ .<= min_a
-function get_borrowing_constrained(::EndOfPeriod, gens::Vector{<:Generation}, min_a)
-    return vcat([get_borrowing_constrained(g.G.a′, min_a) for g in gens]...)
-end
-
-function get_borrowing_constrained(::EndOfPeriod, hh::Households)
-    @unpack gens, grid_a = hh
-    a′ = assemble(gens, :G, :a′)
-    return get_borrowing_constrained(a′, grid_a.min)
+get_borrowing_constrained(::EndOfPeriod, g::Generation) = get_borrowing_constrained(g.G.a′, g.grid_a.min)
+function get_borrowing_constrained(::EndOfPeriod, gens::Vector{<:Generation})
+    return vcat([get_borrowing_constrained(g.G.a′, g.grid_a.min) for g in gens]...)
 end
 
 # Borrowing contrained agents: beggining-of-period assets
+get_borrowing_constrained(::BeginningOfPeriod, g::Generation) = identify_group(g.states, :a, 1)
 function get_borrowing_constrained(::BeginningOfPeriod, gens::Vector{<:Generation})
     return vcat([identify_group(g.states, :a, 1) for g in gens]...)
 end
 get_borrowing_constrained(::BeginningOfPeriod, hh::Households) = get_borrowing_constrained(BeginningOfPeriod(), hh.gens)
 
 # By default: end-of-period assets
-get_borrowing_constrained(gens::Vector{Generation}, args...) = get_borrowing_constrained(EndOfPeriod(), gens, args...)
-get_borrowing_constrained(hh::Households) = get_borrowing_constrained(EndOfPeriod(), hh)
+get_borrowing_constrained(g::Generation) = get_borrowing_constrained(EndOfPeriod(), g)
+get_borrowing_constrained(gens::Vector{Generation}) = get_borrowing_constrained(EndOfPeriod(), gens)
 
 
 
@@ -366,7 +362,7 @@ function plot_generation_by(
 )
     # Preliminaries
     xx = getproperty(g.S, key_x)
-    yy = key_y ∈ [:v,:distr] ? getproperty(g,key_y) : getproperty(g.G, key_y)
+    yy = key_y ∈ [:v,:distr,:euler_errors] ? getproperty(g,key_y) : getproperty(g.G, key_y)
     p=plot()
     # Create plot
     for (crit, lab) in zip(crits(g), labs)
@@ -388,22 +384,44 @@ function plot_generation_by(gens::Vector{<:Generation}, args...; kwargs...)
 end
 
 # Specific methods (savings policy function, distribution, etc.)
-function plot_generation_apol_by(malla_a, args...; lwidth::Int=1, kwargs...)
-    plots_apol = plot_generation_by(args...; lwidth, kwargs...)
-    for p in plots_apol
+function plot_generation_apol_by(gens, args...; lwidth::Int=1, kwargs...)
+    plots_apol = plot_generation_by(gens, args...; lwidth, kwargs...)
+    for (p,g) in zip(plots_apol, gens)
+        malla_a = g.grid_a.nodes
         plot!(p, malla_a, malla_a, line=(lwidth, :dot), color=:darkgray, label="a' = a")
     end
     return plots_apol
 end
-function plot_euler_errors(hh::Households, r′::Real, cfg::GraphConfig)
+function plot_generation_euler_errors(g::Generation, N_z::Int; lwidth::Real=1)
+    # Euler errors only matter for unconstrained agents with life ahead
+    crits = g -> [identify_group(g.states, :z, iz) .& .!get_borrowing_constrained(g) for iz in (1:N_z)]
+    # Labels (only for min and max z)
+    errs_labs = repeat([""], N_z)
+    errs_labs[[1,N_z]] .= ["low z", "high z"]
+    # Plot
+    plot_generation_by(g, :a, :euler_errors; crits, labs=errs_labs, lwidth, ptype=scatter!)
+end
+function plot_generation_euler_errors(hh::Households; lwidth::Real=1)
     # Preliminaries
-    @unpack gens, grid_a, pref, process_z = hh
+    @unpack gens, process_z = hh
+    N_z = size(process_z)
+    # Euler errors only matter for unconstrained agents with life ahead
+    crits = g -> [identify_group(g.states, :z, iz) .& .!get_borrowing_constrained(g) for iz in (1:N_z)]
+    # Labels (only for min and max z)
+    errs_labs = repeat([""], N_z)
+    errs_labs[[1,N_z]] .= ["low z", "high z"]
+    # Plot
+    return plot_generation_by(gens, :a, :euler_errors; crits, labs=errs_labs, lwidth, ptype=scatter!)
+end
+function plot_euler_errors(hh::Households, cfg::GraphConfig)
+    # Preliminaries
+    @unpack gens, pref, process_z = hh
     N_z = size(process_z)
     a = assemble(gens, :S, :a)
     # Get errors
     errs_eu = assemble(gens, :euler_errors)
     # They only matter for unconstrained agents with life ahead
-    unconstr = (.!get_borrowing_constrained(gens, grid_a.min) .& .!isnan.(errs_eu))
+    unconstr = (.!get_borrowing_constrained(gens) .& .!isnan.(errs_eu))
     # Labels (only for min and max z)
     errs_labs = repeat([""], N_z)
     errs_labs[[1,N_z]] .= ["low z", "high z"]
@@ -427,7 +445,7 @@ function plot_generation_distr(
     # Plot
     return plot(malla_x, distr_x, label="", linewidth=lwidth)
 end
-# I could get rid of the method below if I generalise the method "plot_generation_by"
+# I could get rid of the methods below if I generalised the method "plot_generation_by"
 function plot_generation_distr(gens::Vector{<:Generation}, args...; kwargs...)
     # Preliminaries
     N_g = size(gens,1)
@@ -435,6 +453,17 @@ function plot_generation_distr(gens::Vector{<:Generation}, args...; kwargs...)
     for (ig,g) in pairs(gens)
         # Get the plot for the generation
         gen_plots[ig] = plot_generation_distr(g, args...; kwargs...)
+        plot!(title=get_age_range(g))
+    end
+    return gen_plots
+end
+function plot_generation_distr(gens::Vector{<:Generation}, mallas_x::Vector{<:Vector}, args...; kwargs...)
+    # Preliminaries
+    N_g = size(gens,1)
+    gen_plots = Array{Plots.Plot}(undef, N_g)
+    for (ig,g) in pairs(gens)
+        # Get the plot for the generation
+        gen_plots[ig] = plot_generation_distr(g, mallas_x[ig], args...; kwargs...)
         plot!(title=get_age_range(g))
     end
     return gen_plots
