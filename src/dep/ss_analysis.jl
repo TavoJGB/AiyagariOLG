@@ -210,7 +210,7 @@ function ss_graphs(eco::Economía, cfg::GraphConfig)::Nothing
 
     # POLICY FUNCTIONS (by productivity group)
     # Savings
-    tiled_plot(plot_generation_by(gens, :a, :a′, crit_z, ["Min z", "Max z"]; cfg.lwidth), cfg, "Policy functions: savings")
+    tiled_plot(plot_generation_apol_by(grid_a.nodes, gens, :a, :a′, crit_z, ["Min z", "Max z"]; cfg.lwidth), cfg, "Policy functions: savings")
     Plots.savefig(figpath * "ss_apol.png")
     # Consumption
     tiled_plot(plot_generation_by(gens, :a, :c, crit_z, ["Min z", "Max z"]; cfg.lwidth), cfg, "Policy functions: consumption")

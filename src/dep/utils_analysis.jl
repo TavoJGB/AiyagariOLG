@@ -342,14 +342,14 @@ function tiled_plot(vec_plots::Vector{Plots.Plot}, cfg::GraphConfig)
     plot!(size=plotsiz, tickfontsize=fsize, legendfontsize=leg_fsize)
     return tiledp
 end
-function tiled_plot(vec_plots::Vector{Plots.Plot}, cfg::GraphConfig, tit::String)
+function tiled_plot(vec_plots::Vector{Plots.Plot}, cfg::GraphConfig, tit::String; height_tit::Real=0.05)
     tiledplot = Plots.plot(
         # Global title: workaround to show global title (empty plot with annotation)
         Plots.scatter(ones(3), marker=0,markeralpha=0, annotations=(2, 1.0, Plots.text(tit)),axis=false, grid=false, leg=false,size=(200,100)),
         # Grid of policy functions
         tiled_plot(vec_plots, cfg),
         # Layout of title vs grid of plots
-        layout=grid(2,1,heights=[0.1,0.9])
+        layout=grid(2,1,heights=[height_tit,1-height_tit])
     )
     return tiledplot
 end
@@ -374,6 +374,7 @@ function plot_generation_by(
     return p
 end
 
+# Vector of plots (one for each generation in a vector of generations)
 function plot_generation_by(gens::Vector{<:Generation}, args...; kwargs...)
     # Preliminaries
     N_g = size(gens,1)
@@ -383,6 +384,15 @@ function plot_generation_by(gens::Vector{<:Generation}, args...; kwargs...)
         gen_plots[ig] = plot_generation_by(g, args...; kwargs...)
     end
     return gen_plots
+end
+
+# Plotting a generation
+function plot_generation_apol_by(malla_a, args...; lwidth::Int=1)
+    plots_apol = plot_generation_by(args...; lwidth)
+    for p in plots_apol
+        plot!(p, malla_a, malla_a, line=(lwidth, :dot), color=:darkgray, label="a' = a")
+    end
+    return plots_apol
 end
 
 function plot_by_group(
