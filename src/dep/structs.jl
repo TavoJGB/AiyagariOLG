@@ -192,8 +192,9 @@ end
 
 # State variables
 struct StateVariables
-    z::Vector{<:Real}
-    a::Vector{<:Real}
+    ζ                   # Age-dependent productivity
+    z::Vector{<:Real}   # Idiosyncratic productivity
+    a::Vector{<:Real}   # Beginning-of-period assets
 end
 
 # Policy functions
@@ -250,7 +251,7 @@ struct Generation{Tg<:AbstractGenerationType} <: AgentGroup
 end
 # Initialiser
 function Generation(
-    type::AbstractGenerationType, min_age::Int, max_age::Int, grid_z::AbstractGrid, grid_a::AbstractGrid, min_a′::Real
+    type::AbstractGenerationType, min_age::Int, max_age::Int, grid_z::AbstractGrid, grid_a::AbstractGrid, min_a′::Real, ζ::Real
 )
     # Matrix of state indices
     states = StateIndices(; N_z=size(grid_z), N_a=size(grid_a))
@@ -259,7 +260,7 @@ function Generation(
     # State variables
     zz = get_node.(Ref(grid_z), states.z)
     aa = get_node.(Ref(grid_a), states.a)
-    S = StateVariables(zz, aa)
+    S = StateVariables(ζ, zz, aa)
     # Initialise policy functions
     G = PolicyFunctions(N)
     # Initialise value function
@@ -281,6 +282,7 @@ get_age_range(g::Generation) = string(g.min_age, "-", g.max_age)
 # Combine generations
 function combine(gens::Vector{<:Generation})
     # Assemble variables
+    ζs = assemble(gens, g -> fill(g.S.ζ, g.N))
     min_ages = assemble(gens, g -> fill(g.min_age, g.N))
     max_ages = assemble(gens, g -> fill(g.max_age, g.N))
     iz = assemble(gens, :states, :z)
@@ -302,7 +304,7 @@ function combine(gens::Vector{<:Generation})
     grids_a = CombinedGrid([g.grid_a for g in gens])
     ig = vcat([fill(i, g.N) for (i,g) in enumerate(gens)]...)
     states = CombinedStateIndices(ig, iz, ia)
-    S = StateVariables(z, a)
+    S = StateVariables(ζs, z, a)
     G = PolicyFunctions(c, a′)
     # Create combined generation
     return Generation{CombinedGen}(min_age, max_age, N, grids_a, min_a′, states, S, G, v, Q, distr, euler_errors)
@@ -327,7 +329,8 @@ struct Households
     function Households(;
         ages::AbstractVector, process_z::MarkovProcess,
         tipo_pref, pref_kwargs,
-        tipo_a, grid_kwargs
+        tipo_a, grid_kwargs,
+        ζ_f::Function
     )
         # Unpack
         grid_z = process_z.grid
@@ -339,14 +342,19 @@ struct Households
         avg_ages = (min_ages .+ max_ages) / 2
         # Number of generations
         N_g = length(min_ages)
+        # Life-cycle productivity
+        malla_ζ = [ζ_f(avg_ages[ig]) for ig in 1:N_g]
+        malla_ζ .= malla_ζ / (sum(malla_ζ)/N_g)
+            # Average productivity while working: normalisation to one
+            # this works as population is equally distributed across generations (certain lifespan)
         # Age-dependent assets grids
         grids_a = CombinedGrid(tipo_a; ages=avg_ages, grid_kwargs...)
         min_a′ = grid_kwargs[:min]
         # Vector of generations
-        gens = [Generation(StandardGen(), min_ages[ig], max_ages[ig], grid_z, grids_a[ig], min_a′) for ig in 2:(N_g-1)]
-        gens = vcat(Generation(Newby(), min_ages[1], max_ages[1], grid_z, grids_a[1], min_a′),
+        gens = [Generation(StandardGen(), min_ages[ig], max_ages[ig], grid_z, grids_a[ig], min_a′, malla_ζ[ig]) for ig in 2:(N_g-1)]
+        gens = vcat(Generation(Newby(), min_ages[1], max_ages[1], grid_z, grids_a[1], min_a′, malla_ζ[1]),
                     gens,
-                    Generation(Oldest(), min_ages[end], max_ages[end], grid_z, grids_a[end], min_a′))
+                    Generation(Oldest(), min_ages[end], max_ages[end], grid_z, grids_a[end], min_a′, malla_ζ[end]))
         # Total number of agents
         N = get_N_agents(gens)
         # Return structure

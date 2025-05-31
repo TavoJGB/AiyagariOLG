@@ -2,6 +2,12 @@
     HOUSEHOLDS' PROBLEM
 ===========================================================================#
 
+# Households' income
+function labour_income(S::StateVariables, w::Real)
+    @unpack ζ, z = S
+    return w*ζ*z
+end
+
 # Error in optimality conditions
 function err_euler(
     c::Vector{<:Real}, pref::Preferencias, Q::AbstractMatrix, r′::Real;
@@ -46,8 +52,7 @@ end
 function err_budget(G::PolicyFunctions, prices::Prices, S::StateVariables)
     @unpack c, a′ = G
     @unpack r, w = prices
-    @unpack a, z = S
-    return (1+r)*a + w*z - c - a′
+    return (1+r)*S.a + labour_income(S, w) - c - a′
 end
 function err_budget(eco::Economía)
     @unpack hh, pr = eco
@@ -63,25 +68,14 @@ function a_budget(pr::Prices, c::Vector{<:Real}, S::StateVariables)
     @unpack r, w = pr
     a′ = S.a
     # Budget constraint
-    return (a′ + c - w*S.z) / (1+r)
+    return (a′ + c - labour_income(S, w)) / (1+r)
 end
 function budget_constraint(outflow1::Vector{<:Real}, prices::Prices, S::StateVariables)
     @unpack r, w = prices
-    @unpack a, z = S
+    @unpack ζ, z, a = S
     # If outflow1 is consumption, then return is savings
     # If outflow1 is savings, then return is consumption
-    return (1+r)*a + w*z - outflow1
-end
-
-# Guessing the policy functions
-function guess_G!(hh::Households, pr::Prices)::Nothing
-    # Unpack parameters
-    @unpack r, w = pr
-    @unpack z, a = hh.S
-    # Update policy functions
-    hh.G.c = r*a + w*z
-    hh.G.a′ = a
-    return nothing
+    return (1+r)*a + labour_income(S, w) - outflow1
 end
 
 # EGM optimization: auxiliary functions

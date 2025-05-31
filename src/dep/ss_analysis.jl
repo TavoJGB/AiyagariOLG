@@ -41,10 +41,11 @@ end
 
 function ss_distributional_analysis(eco::Economía; kwargs...)
     @unpack hh, pr = eco
+    @unpack gens = hh;
     # Assemble relevant variables
-    distr = assemble(hh.gens, :distr)
-    lab_inc = pr.w * assemble(hh.gens, :S, :z)
-    a = assemble(hh.gens, :S, :a)
+    distr = assemble(gens, :distr)
+    lab_inc = assemble(gens, g -> labour_income(g.S, pr.w))
+    a = assemble(gens, :S, :a)
     # Preliminaries
     divs, labs, quantmat_kwargs = preliminaries_quantile_matrix(; kwargs...)
     # Quantile computation
@@ -65,9 +66,9 @@ function ss_mobility(eco::Economía;
     # Assemble relevant variables
     Qs = getproperty.(gens[1:nt], :Q)
     newby_distr = gens[1].distr
-    newby_labinc = pr.w * gens[1].S.z
+    newby_labinc = labour_income(gens[1].S, pr.w)
     fut_distr = gens[nt+1].distr
-    fut_labinc = pr.w * gens[nt+1].S.z
+    fut_labinc = labour_income(gens[nt+1].S, pr.w)
     # Preliminaries
     labs = ["Q$(i)" for i in 1:nq]
     # Income mobility: prospects for the bottom and top labour income quintiles
@@ -197,16 +198,9 @@ function ss_graphs(eco::Economía, cfg::GraphConfig)::Nothing
     # Combine generations (if needed)
     @unpack figpath, combine_gens = cfg;
     red_gens = combine(gens, combine_gens);
-    # Assemble states and policy functions
-    a′ = assemble(gens, :G, :a′)
-    c = assemble(gens, :G, :c)
-    a = assemble(gens, :S, :a)
-    # Distribution
-    distr = assemble(gens, :distr)
     # Identify least and most productive groups
-    crit_z = g -> [identify_group(g.states.z, 1), identify_group(g.states.z, N_z)]
-    # Other
     N_z = size(process_z)
+    crit_z = g -> [identify_group(g.states.z, 1), identify_group(g.states.z, N_z)]
 
     # POLICY FUNCTIONS (by productivity group)
     # Savings

@@ -417,17 +417,18 @@ function plot_euler_errors(hh::Households, cfg::GraphConfig)
     # Preliminaries
     @unpack gens, pref, process_z = hh
     N_z = size(process_z)
-    a = assemble(gens, :S, :a)
+    aa = assemble(gens[1:(end-1)], :S, :a)
+    iz = assemble(gens[1:(end-1)], :states, :z)
     # Get errors
-    errs_eu = assemble(gens, :euler_errors)
+    errs_eu = assemble(gens[1:(end-1)], :euler_errors)
     # They only matter for unconstrained agents with life ahead
-    unconstr = (.!get_borrowing_constrained(gens) .& .!isnan.(errs_eu))
+    unconstr = .!get_borrowing_constrained(gens[1:(end-1)])
     # Labels (only for min and max z)
     errs_labs = repeat([""], N_z)
     errs_labs[[1,N_z]] .= ["low z", "high z"]
     # Plot
     return  plot_by_group(
-                a[unconstr], errs_eu[unconstr], cfg, 1:N_z, assemble(gens,:states,:z)[unconstr];        
+                aa[unconstr], errs_eu[unconstr], cfg, 1:N_z, iz[unconstr];
                 ptype=scatter!, leglabs=errs_labs, tit="Euler Errors"
             )
 end

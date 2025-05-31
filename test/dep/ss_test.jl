@@ -29,7 +29,7 @@ function ss_test(eco::Economía; tol=1e-6)
 
     # HOUSEHOLD'S PROBLEM
     # Euler equation (only applies to unconstrained households that are not at the end of their lifespan)
-    errs_eu = assemble(gens[1:(end-1)],:euler_errors)
+    errs_eu = assemble(gens[1:(end-1)], :euler_errors)
     unconstr = .!get_borrowing_constrained(gens[1:(end-1)])
     @test maximum(abs.(errs_eu[unconstr])) < 1000*tol  # lower tolerance requires larger N_a 
     # sum(distr .* (abs.(errs_eu).>100tol) .* (unconstr))

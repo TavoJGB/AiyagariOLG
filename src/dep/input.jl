@@ -91,6 +91,8 @@ function build_model(
     process_z = get_object(pars, "_z"; typesubstr="Suffix")
     # Life-cycle structures
     ages = get_ages(; getindex(pars, get_life_cycle_parameters())...)
+    ζ_pars = subset_namedtuple(pars, "ζ_"; typesubstr="Prefix") |> collect
+    ζ_f(age::Real)::Real = max(dot(age.^(0:(length(ζ_pars)-1))', ζ_pars), 0)
     # Configuration of solvers
     cfg_r = get_object(pars, "cfg_r_")
     cfg_hh = get_object(pars, "cfg_hh_")
@@ -103,7 +105,7 @@ function build_model(
     tipo_a = pars_a.tipo
     grid_kwargs = pars_a[filter(key -> key != :tipo, keys(pars_a))]
     # Build structures
-    hh = Households(; ages, process_z, tipo_pref, pref_kwargs, tipo_a, grid_kwargs)
+    hh = Households(; ages, process_z, tipo_pref, pref_kwargs, tipo_a, grid_kwargs, ζ_f)
     fm = Firms(; getindex(pars, get_firm_parameters())...)
     cfg = Configuration(cfg_r, cfg_hh, cfg_graph, pars.years_per_period)
     # Return structures
