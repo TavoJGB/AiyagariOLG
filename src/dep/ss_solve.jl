@@ -13,8 +13,8 @@ function err_euler(
     c::Vector{<:Real}, pref::Preferencias, Q::AbstractMatrix, r′::Real;
     c′::Vector{<:Real}
 )
-    @unpack β, u′ = pref
-    return u′.(c) - β*(1+r′) * Q' * u′.(c′)
+    @unpack β, u′, inv_u′ = pref
+    return c - inv_u′.( β*(1+r′) * Q' * u′.(c′) )
 end
 function err_euler(gens::Vector{<:Generation}, pref::Preferencias, r′::Real; complete::Bool=false)
     # Compute euler errors for all generations but last one

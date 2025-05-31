@@ -1,6 +1,6 @@
 # Household parameters
 tipo_pref=CRRA()
-β=0.97
+β=0.94
 γ=1.5
 # Firm parameters
 α=1/3
@@ -14,13 +14,17 @@ tipo_z=DiscreteAR1
 tipo_a=Curved()
 N_a=250
 min_a=0
-max_a=70.0
+max_a=80.0
 gscale_max_a=1.0
 curv_a=1/4
 # Life-cycle parameters
 min_age=20
 max_age=90
 years_per_period=5
+ζ_0=-2.319e+04
+ζ_1= 2.414e+03
+ζ_2=-1.633e+01
+ζ_3=-1.234e-01
 # Solver parameters: K market
 cfg_r_tipo=LinearJumps()
 cfg_r_objective="Capital market"
