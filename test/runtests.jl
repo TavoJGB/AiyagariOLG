@@ -4,7 +4,7 @@ using Test
 
 # Loading main module and dependencies
 using AiyagariOLG
-import AiyagariOLG: err_euler, err_budget, get_borrowing_constrained, get_r, ZipForward, ZipBackward
+import AiyagariOLG: err_euler, err_budget, get_borrowing_constrained, get_r, zip_backward, zip_forward
 using AiyagariOLG.LinearAlgebra
 using AiyagariOLG.Parameters
 include("./dep/utils_test.jl")
@@ -23,6 +23,7 @@ eco = steady(model_tst...; r_0=0.04);
 @testset "BENCHMARK SIMULATION: Steady State" begin
     ss_test(eco; tol)
     quantiles_test(eco; tol)
+    annualise!(eco)
     @test compare_results(eco; nq=5, top=0.1) < tol
 end
 

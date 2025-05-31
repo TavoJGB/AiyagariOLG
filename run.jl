@@ -1,7 +1,7 @@
 using AiyagariOLG
 
 # Settings
-model = build_model(; N_z=5, N_a=250);
+model = build_model(; N_z=5, N_a=500);
 
 # Compute steady state
 eco = steady(model...; r_0=0.04);

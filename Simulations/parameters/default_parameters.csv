@@ -12,9 +12,9 @@ tipo_z=DiscreteAR1
 σ_z=0.20
 # Asset-grid parameters
 tipo_a=Curved()
-N_a=150
+N_a=250
 min_a=0
-max_a=50.0
+max_a=70.0
 gscale_max_a=1.0
 curv_a=1/4
 # Life-cycle parameters
