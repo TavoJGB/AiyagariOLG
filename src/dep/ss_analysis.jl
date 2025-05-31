@@ -229,7 +229,7 @@ function ss_graphs(eco::Economía, cfg::GraphConfig)::Nothing
 
     # EULER ERRORS (by productivity group, ignore oldest generation)
     # plot_euler_errors(hh, pr.r, cfg)
-    tiled_plot(plot_generation_euler_errors(hh; cfg.lwidth), cfg, "Asset distribution by age group")
+    tiled_plot(plot_generation_euler_errors(hh; cfg.lwidth), cfg, "Euler errors by age group")
     Plots.savefig(figpath * "ss_euler_err_byage.png")
     plot_euler_errors(hh, cfg)
     Plots.savefig(figpath * "ss_euler_err.png")

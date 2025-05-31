@@ -236,6 +236,7 @@ struct Generation{Tg<:AbstractGenerationType} <: AgentGroup
     N::Int
     # Assets grid
     grid_a::AbstractGrid
+    min_a′::Real
     # States and policy functions
     states::AbstractStateIndices
     S::StateVariables
@@ -248,7 +249,9 @@ struct Generation{Tg<:AbstractGenerationType} <: AgentGroup
     euler_errors::Vector{<:Real}
 end
 # Initialiser
-function Generation(type::AbstractGenerationType, min_age::Int, max_age::Int, grid_z::AbstractGrid, grid_a::AbstractGrid)
+function Generation(
+    type::AbstractGenerationType, min_age::Int, max_age::Int, grid_z::AbstractGrid, grid_a::AbstractGrid, min_a′::Real
+)
     # Matrix of state indices
     states = StateIndices(; N_z=size(grid_z), N_a=size(grid_a))
     # Number of agents in a generation
@@ -268,7 +271,7 @@ function Generation(type::AbstractGenerationType, min_age::Int, max_age::Int, gr
     # Initialise euler errors
     euler_errs = similar(distr)
     # Return structure
-    return Generation{typeof(type)}(min_age, max_age, N, grid_a, states, S, G, vv, Q, distr, euler_errs)
+    return Generation{typeof(type)}(min_age, max_age, N, grid_a, min_a′, states, S, G, vv, Q, distr, euler_errs)
 end
 # Methods
 Base.size(g::Generation) = g.N
@@ -294,6 +297,7 @@ function combine(gens::Vector{<:Generation})
     min_age = minimum(min_ages)
     max_age = maximum(max_ages)
     N = length(z)
+    min_a′ = NaN  # This will be set later, if needed
     # Structures
     grids_a = CombinedGrid([g.grid_a for g in gens])
     ig = vcat([fill(i, g.N) for (i,g) in enumerate(gens)]...)
@@ -301,7 +305,7 @@ function combine(gens::Vector{<:Generation})
     S = StateVariables(z, a)
     G = PolicyFunctions(c, a′)
     # Create combined generation
-    return Generation{CombinedGen}(min_age, max_age, N, grids_a, states, S, G, v, Q, distr, euler_errors)
+    return Generation{CombinedGen}(min_age, max_age, N, grids_a, min_a′, states, S, G, v, Q, distr, euler_errors)
 end
 function combine(gens::Vector{<:Generation}, howmany::Int)
     howmany==1 && return gens  # don't do anything if howmany == 1
@@ -337,11 +341,12 @@ struct Households
         N_g = length(min_ages)
         # Age-dependent assets grids
         grids_a = CombinedGrid(tipo_a; ages=avg_ages, grid_kwargs...)
+        min_a′ = grid_kwargs[:min]
         # Vector of generations
-        gens = [Generation(StandardGen(), min_ages[ig], max_ages[ig], grid_z, grids_a[ig]) for ig in 2:(N_g-1)]
-        gens = vcat(Generation(Newby(), min_ages[1], max_ages[1], grid_z, grids_a[1]),
+        gens = [Generation(StandardGen(), min_ages[ig], max_ages[ig], grid_z, grids_a[ig], min_a′) for ig in 2:(N_g-1)]
+        gens = vcat(Generation(Newby(), min_ages[1], max_ages[1], grid_z, grids_a[1], min_a′),
                     gens,
-                    Generation(Oldest(), min_ages[end], max_ages[end], grid_z, grids_a[end]))
+                    Generation(Oldest(), min_ages[end], max_ages[end], grid_z, grids_a[end], min_a′))
         # Total number of agents
         N = get_N_agents(gens)
         # Return structure

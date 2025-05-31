@@ -55,9 +55,9 @@ function err_budget(eco::Economía)
 end
 
 # Solving the optimality conditions for one variable
-function c_euler(pref::Preferencias, c′::Vector{<:Real}, Π_trans::Matrix{<:Real}, r::Real, N::Integer, N_a::Integer)
+function c_euler(pref::Preferencias, c′::Vector{<:Real}, Π_trans::Matrix{<:Real}, r::Real, N::Integer, N_a′::Integer)
     @unpack β, u′, inv_u′ = pref
-    return reshape(inv_u′.(β*(1+r)*reshape(u′.(c′),N_a,:) * Π_trans'), N)
+    return reshape(inv_u′.(β*(1+r)*reshape(u′.(c′),N_a′,:) * Π_trans'), N)
 end
 function a_budget(pr::Prices, c::Vector{<:Real}, S::StateVariables)
     @unpack r, w = pr
@@ -95,7 +95,8 @@ function EGM_savings!(
 )::Nothing
     # Unpack
     @unpack N, S, states = gg
-    malla_a = grid_a′.nodes
+    malla_a = gg.grid_a.nodes
+    malla_a′ = grid_a′.nodes
     # Initialise policy function for savings
     a_EGM = similar(c′)
     # Implied consumption and assets
@@ -104,7 +105,7 @@ function EGM_savings!(
     # Invert to get policy function for savings
     for zz=1:size(process_z)
         ind_z = (states.z .== zz)
-        a_EGM[ind_z] = interpLinear(malla_a, a_imp[ind_z], malla_a)
+        a_EGM[ind_z] = interpLinear(malla_a, a_imp[ind_z], malla_a′)
     end
     # Policy function bounds
     @. a_EGM = clamp(a_EGM, grid_a′.min, grid_a′.max)
@@ -279,7 +280,7 @@ function Q_matrix(
     for z′=1:N_z
         Q_vecs!(indx_Q, indy_Q, vals_Q,         # vectors that will be appended
                 findall(states′.z .== z′), 1:N, # rows and columns to fill
-                Π_z[zz,z′]' .* Π_a′)             # transition probabilities
+                Π_z[zz,z′]' .* Π_a′)            # transition probabilities
     end
     # Build the sparse matrix
     return sparse(indx_Q, indy_Q, vals_Q, N, N)

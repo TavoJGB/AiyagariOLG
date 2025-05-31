@@ -26,9 +26,9 @@ get_saving_symbols(::BeginningOfPeriod) = (:states, :a)
 
 # Borrowing contrained agents: end-of-period assets
 get_borrowing_constrained(a′, min_a) = a′ .<= min_a
-get_borrowing_constrained(::EndOfPeriod, g::Generation) = get_borrowing_constrained(g.G.a′, g.grid_a.min)
-function get_borrowing_constrained(::EndOfPeriod, gens::Vector{<:Generation})
-    return vcat([get_borrowing_constrained(g.G.a′, g.grid_a.min) for g in gens]...)
+get_borrowing_constrained(::EndOfPeriod, g::Generation) = get_borrowing_constrained(g.G.a′, g.min_a′)
+function get_borrowing_constrained(::EndOfPeriod, gens::Vector{<:Generation}) 
+    return vcat([get_borrowing_constrained(EndOfPeriod(), g) for g in gens]...)
 end
 
 # Borrowing contrained agents: beggining-of-period assets
@@ -401,17 +401,17 @@ function plot_generation_euler_errors(g::Generation, N_z::Int; lwidth::Real=1)
     # Plot
     plot_generation_by(g, :a, :euler_errors; crits, labs=errs_labs, lwidth, ptype=scatter!)
 end
-function plot_generation_euler_errors(hh::Households; lwidth::Real=1)
+function plot_generation_euler_errors(hh::Households; kwargs...)
     # Preliminaries
     @unpack gens, process_z = hh
     N_z = size(process_z)
-    # Euler errors only matter for unconstrained agents with life ahead
-    crits = g -> [identify_group(g.states, :z, iz) .& .!get_borrowing_constrained(g) for iz in (1:N_z)]
-    # Labels (only for min and max z)
-    errs_labs = repeat([""], N_z)
-    errs_labs[[1,N_z]] .= ["low z", "high z"]
+    N_g = length(gens)
+    gen_plots = Array{Plots.Plot}(undef, N_g-1)
     # Plot
-    return plot_generation_by(gens, :a, :euler_errors; crits, labs=errs_labs, lwidth, ptype=scatter!)
+    for (ig, g) in enumerate(gens[1:end-1])
+        gen_plots[ig] = plot_generation_euler_errors(g, N_z; kwargs...)
+    end
+    return gen_plots
 end
 function plot_euler_errors(hh::Households, cfg::GraphConfig)
     # Preliminaries
