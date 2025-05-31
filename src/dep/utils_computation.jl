@@ -279,6 +279,9 @@ end
 zip_backward(x::AbstractVector) = zip(x[(end-1):-1:1], x[end:-1:2])
 zip_forward(x::AbstractVector) = zip(x[2:end], x[1:(end-1)])
 # Test:
-# for (g,g′) in zip_backward(gens)
-#     println("Age g: $(g.age). Age g′: $(g′.age).")
+# for (g, g′) in zip_backward(gens)
+#     println("Age g: $(get_age_range(g)), Age g′: $(get_age_range(g′))")
+# end
+# for (g, g_prev) in zip_forward(gens)
+#     println("Age g: $(get_age_range(g)), Age g_prev: $(get_age_range(g_prev))")
 # end
