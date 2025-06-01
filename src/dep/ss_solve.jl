@@ -78,47 +78,6 @@ function budget_constraint(outflow1::Vector{<:Real}, prices::Prices, S::StateVar
     return (1+r)*a + labour_income(S, w) - outflow1
 end
 
-# EGM optimization: auxiliary functions
-function EGM_savings!(gg::Generation{<:Oldest}, args...)::Nothing
-    gg.G.a′ .= 0
-    return nothing
-end
-function EGM_savings!(
-    gg::Generation, pr::Prices, c′::Vector{<:Real}, grid_a′::AbstractGrid,
-    pref::Preferencias, process_z::MarkovProcess
-)::Nothing
-    # Unpack
-    @unpack N, S, states = gg
-    malla_a = gg.grid_a.nodes
-    malla_a′ = grid_a′.nodes
-    # Initialise policy function for savings
-    a_EGM = similar(c′)
-    # Implied consumption and assets
-    c_imp = c_euler(pref, c′, process_z.Π, pr.r, N, size(grid_a′))
-    a_imp = a_budget(pr, c_imp, S)
-    # Invert to get policy function for savings
-    for zz=1:size(process_z)
-        ind_z = (states.z .== zz)
-        a_EGM[ind_z] = interpLinear(malla_a, a_imp[ind_z], malla_a′)
-    end
-    # Policy function bounds
-    @. a_EGM = clamp(a_EGM, grid_a′.min, grid_a′.max)
-    # Update policy function
-    gg.G.a′ = a_EGM
-    return nothing
-end
-function EGM_consumption!(gg::Generation, pr::Prices)::Nothing
-    gg.G.c = budget_constraint(gg.G.a′, pr, gg.S)
-    return nothing
-end
-
-# EGM: one iteration
-function EGM_iter!(gg::Generation, pr::Prices, args...)::Nothing
-    EGM_savings!(gg, pr, args...)
-    EGM_consumption!(gg, pr)
-    return nothing
-end
-
 # All households
 function hh_solve!(eco::Economía, cfg::Configuration)::Nothing
     @unpack hh, fm, pr = eco;
@@ -126,9 +85,9 @@ function hh_solve!(eco::Economía, cfg::Configuration)::Nothing
     @unpack cfg_hh = cfg;
     # Update policy functions for each generation
     aux_get_guess(gg::Generation) = gg.G.c
-    solve!(cfg_hh, aux_get_guess, gens[end], EGM_iter!, pr)   # last generation
+    solve!(cfg_hh, aux_get_guess, gens[end], pr)   # last generation
     for (g, g′) in zip_backward(gens)  # previous generations
-        solve!(cfg_hh, aux_get_guess, g, EGM_iter!, pr, g′.G.c, g′.grid_a, pref, process_z)
+        solve!(cfg_hh, aux_get_guess, g, pr, g′.G.c, g′.grid_a, pref, process_z)
     end
     # Q-transition matrix
     Q_matrix!(eco.hh)

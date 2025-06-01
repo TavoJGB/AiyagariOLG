@@ -4,22 +4,29 @@
 
 function get_object(pars, substr; typesubstr::String="Prefix")
     subset = subset_namedtuple(pars, substr; typesubstr)
-    tipo = subset.tipo
+    tipo = eval(subset.tipo)
     req_pars = get_required_parameters(tipo)
     return _get_object(tipo; getindex(subset, req_pars)...)
 end
-
 function get_required_parameters(tipo::DataType)
-    tiposhort = split(string(tipo),".")[end]
-    "get_$(tiposhort)_parameters()" |> Meta.parse |> eval
+    if tipo <: MarkovProcess
+        tiposhort = split(string(tipo),".")[end]
+        return "get_$(tiposhort)_parameters()" |> Meta.parse |> eval
+    else
+        return get_required_parameters(tipo())
+    end
 end
-get_required_parameters(type::SolverType) = get_solver_parameters(type)
 
 function _get_object(tipo::DataType; kwargs...)
-    tiposhort = split(string(tipo),".")[end]
-    eval(Meta.parse("_$(tiposhort)"))(; kwargs...)
+    if tipo <: MarkovProcess
+        tiposhort = split(string(tipo),".")[end]
+        return eval(Meta.parse("_$(tiposhort)"))(; kwargs...)
+    else
+        return _get_object(tipo(); kwargs...)
+    end
 end
 _get_object(tipo::SolverType; kwargs...) = Solver(tipo; kwargs...)
+_get_object(tipo::AbstractGridType; kwargs...) = Grid(tipo; kwargs...)
 
 
 
@@ -68,6 +75,18 @@ end
 
 
 #===========================================================================
+    INCLUDE ONLY THE SOLVERS THAT WILL BE USED
+===========================================================================#
+
+function include_solver(::EGM)::Nothing
+    @eval using .SolverEGM
+    println("Loaded EGM solver")
+    return nothing
+end
+
+
+
+#===========================================================================
     BUILD MAIN STRUCTURES FROM PARAMETERS
 ===========================================================================#
 
@@ -93,6 +112,8 @@ function build_model(
     ages = get_ages(; getindex(pars, get_life_cycle_parameters())...)
     ζ_pars = subset_namedtuple(pars, "ζ_"; typesubstr="Prefix") |> collect
     ζ_f(age::Real)::Real = max(dot(age.^(0:(length(ζ_pars)-1))', ζ_pars), 0)
+    # Include specific solvers
+    include_solver(pars.cfg_hh_tipo)
     # Configuration of solvers
     cfg_r = get_object(pars, "cfg_r_")
     cfg_hh = get_object(pars, "cfg_hh_")

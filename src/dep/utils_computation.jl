@@ -2,28 +2,6 @@
     SOLVERS
 ===========================================================================#
 
-# EGM
-function solve!(solver::Solver{<:EGM}, args...)
-    EGM!(solver.p, args...)
-end
-function EGM!(pars::SolverParameters, get_guess::Function, main, iterator!::Function, args...)
-    @unpack tol, maxit = pars
-    for it in 1:maxit
-        # Initial guess
-        guess = get_guess(main)
-        # Iteration
-        iterator!(main, args...)
-        # Implied value
-        implied = get_guess(main)
-        # Check convergence
-        if maximum(abs.(implied .- guess)) < tol
-            # println(pars.objective, " converged in $it iterations")
-            return nothing
-        end
-    end
-    error("EGM did not converge")
-end
-
 # Linear Jumps: update to the linear combination of guess and implied values
 function solve!(solver::Solver{<:LinearJumps}, args...)
     LinearJumps!(solver.p, args...)

@@ -16,7 +16,7 @@ module AiyagariOLG
     include("./dep/structs.jl")
         export Households, Firms, Economía, Aggregates, assemble, Generation, get_age_range
     include("./dep/utils_computation.jl")
-        export EGM, LinearJumps
+        # export
     include("./dep/utils_analysis.jl")
         # export
     include("./dep/input.jl")
@@ -27,4 +27,7 @@ module AiyagariOLG
         export steady, annualise!
     include("./dep/ss_analysis.jl")
         export ss_analysis, ss_summarise, ss_distributional_analysis, ss_mobility, ss_graphs
+
+    # Extensions
+    include("./dep/solvers/SolverEGM.jl")
 end

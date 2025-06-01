@@ -5,8 +5,9 @@
 # Solvers
 abstract type SolverType end
 struct LinearJumps <: SolverType end
-struct EGM <: SolverType end
-struct POWM <: SolverType end
+struct EGM <: SolverType end            # requires SolverEGM.jl extension
+
+get_solver_type(solv_t::Symbol) = eval(solv_t)()
 
 # Parameters of the solvers
 abstract type SolverParameters end
@@ -16,7 +17,7 @@ abstract type SolverParameters end
     maxit::Int
 end
 SolverParameters(::SolverType; kwargs...) = BasicSolverParameters(; kwargs...)
-get_solver_parameters(::SolverType) = [:objective, :tol, :maxit]
+get_required_parameters(::SolverType) = [:objective, :tol, :maxit]
 @with_kw struct LinearJumpsParameters <: SolverParameters
     objective::String
     tol::Real
@@ -24,7 +25,7 @@ get_solver_parameters(::SolverType) = [:objective, :tol, :maxit]
     maxit::Int
 end
 SolverParameters(::LinearJumps; kwargs...) = LinearJumpsParameters(; kwargs...)
-get_solver_parameters(::LinearJumps) = [:objective, :tol, :wgt, :maxit]
+get_required_parameters(::LinearJumps) = [:objective, :tol, :wgt, :maxit]
 
 # Main solver structure
 struct Solver{Ts <: SolverType}
@@ -66,26 +67,30 @@ end
 
 abstract type AbstractGridType end
 struct Curved <: AbstractGridType end
+struct Linear <: AbstractGridType end
+struct Basic <: AbstractGridType end
 
 abstract type AbstractGrid end
 
 struct BasicGrid <: AbstractGrid
     N::Int
     nodes::Vector{<:Real}
-    BasicGrid(nodes) = new(length(nodes), nodes) 
 end
-get_BasicGrid_parameters() = [:nodes]
+_BasicGrid(; nodes) = BasicGrid(length(nodes), nodes)
+Grid(type::AbstractGridType; kwargs...) = _BasicGrid(; kwargs...)
+get_required_parameters(::AbstractGridType) = [:nodes]
 struct LinearGrid <: AbstractGrid
     N::Int
     min::Real
     max::Real
     nodes::Vector{<:Real}
 end
-function _LinearGrid(N::Int, min::Real, max::Real)
+function _LinearGrid(; N::Int, min::Real, max::Real)
     nodes = range(min, max, length=N) |> collect
     return LinearGrid(N, min, max, nodes)
 end
-get_LinearGrid_parameters() = [:N, :min, :max]
+Grid(type::Linear; kwargs...) = _LinearGrid(; kwargs...)
+get_required_parameters(::Linear) = [:N, :min, :max]
 @with_kw struct CurvedGrid <: AbstractGrid
     N::Int
     curv::Real
@@ -97,7 +102,8 @@ function _CurvedGrid(; N::Int, curv::Real, min::Real, max::Real)
     nodes = min .+ (max - min) .* (range(0.0, 1.0, length=N) .^ (1/curv))
     return CurvedGrid(N, curv, min, max, nodes)
 end
-get_CurvedGrid_parameters() = [:N, :curv, :min, :max]
+Grid(type::Curved; kwargs...) = _CurvedGrid(; kwargs...)
+get_required_parameters(::Curved) = [:N, :curv, :min, :max]
 
 # Grid methods
 Base.size(grid::AbstractGrid) = grid.N
@@ -145,7 +151,7 @@ function _DiscreteAR1(; N::Int, ρ::Real, σ::Real, method=rouwenhorst)
     nodes .= nodes / dot(ss_dist, nodes)
     # Transition matrix
     Π = trans' |> collect
-    return DiscreteAR1(ρ, σ, BasicGrid(nodes), Π, ss_dist)
+    return DiscreteAR1(ρ, σ, Grid(Basic(); nodes), Π, ss_dist)
 end
 get_DiscreteAR1_parameters() = [:N, :ρ, :σ]
 
