@@ -263,3 +263,4 @@ zip_forward(x::AbstractVector) = zip(x[2:end], x[1:(end-1)])
 # for (g, g_prev) in zip_forward(gens)
 #     println("Age g: $(get_age_range(g)), Age g_prev: $(get_age_range(g_prev))")
 # end
+@warn "When using zip_backward to create a vector, invert the order of the resulting vector: it will have oldest generations first, while the rest of the code expects youngest generations to be the first ones in the vector"

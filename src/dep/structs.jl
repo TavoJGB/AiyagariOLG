@@ -53,7 +53,7 @@ end
 
 struct Configuration
     cfg_r::Solver
-    cfg_hh::Solver
+    # cfg_hh::Solver
     cfg_graph::GraphConfig
     # Years per model period
     years_per_period::Int

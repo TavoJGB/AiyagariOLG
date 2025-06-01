@@ -75,18 +75,6 @@ end
 
 
 #===========================================================================
-    INCLUDE ONLY THE SOLVERS THAT WILL BE USED
-===========================================================================#
-
-function include_solver(::EGM)::Nothing
-    @eval using .SolverEGM
-    println("Loaded EGM solver")
-    return nothing
-end
-
-
-
-#===========================================================================
     BUILD MAIN STRUCTURES FROM PARAMETERS
 ===========================================================================#
 
@@ -111,12 +99,9 @@ function build_model(
     # Life-cycle structures
     ages = get_ages(; getindex(pars, get_life_cycle_parameters())...)
     ζ_pars = subset_namedtuple(pars, "ζ_"; typesubstr="Prefix") |> collect
-    ζ_f(age::Real)::Real = max(dot(age.^(0:(length(ζ_pars)-1))', ζ_pars), 0)
-    # Include specific solvers
-    include_solver(pars.cfg_hh_tipo)
+    ζ_f(age::Real)::Real = max(dot(age.^(0:(length(ζ_pars)-1))', ζ_pars), 0.0)
     # Configuration of solvers
     cfg_r = get_object(pars, "cfg_r_")
-    cfg_hh = get_object(pars, "cfg_hh_")
     cfg_graph = _GraphConfig(; subset_namedtuple(pars, "cfg_graph_")...)
     # Kwargs for households
     pars_pref = getindex(pars, get_preference_parameters())
@@ -128,7 +113,7 @@ function build_model(
     # Build structures
     hh = Households(; ages, process_z, tipo_pref, pref_kwargs, tipo_a, grid_kwargs, ζ_f)
     fm = Firms(; getindex(pars, get_firm_parameters())...)
-    cfg = Configuration(cfg_r, cfg_hh, cfg_graph, pars.years_per_period)
+    cfg = Configuration(cfg_r, cfg_graph, pars.years_per_period)
     # Return structures
     return (; hh, fm, cfg)
 end

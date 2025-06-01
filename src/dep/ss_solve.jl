@@ -1,5 +1,5 @@
 #===========================================================================
-    HOUSEHOLDS' PROBLEM
+    HOUSEHOLDS' PROBLEM: auxiliary
 ===========================================================================#
 
 # Households' income
@@ -18,7 +18,9 @@ function err_euler(
 end
 function err_euler(gens::Vector{<:Generation}, pref::Preferencias, r′::Real; complete::Bool=false)
     # Compute euler errors for all generations but last one
-    errs = vcat([ err_euler(g.G.c, pref, g.Q, r′; c′=g′.G.c) for (g, g′) in zip_backward(gens) ]...)
+    errs = vcat([ err_euler(g.G.c, pref, g.Q, r′; c′=g′.G.c) for (g, g′) in zip_backward(gens) ][end:-1:1]...)
+        # Need to invert the order because we start computing older generations, but the rest of the code
+        # expects youngest generations to be the first ones in the vector
     if (complete)   # add NaN for oldest generation
         return vcat(errs, fill(NaN, size(gens[end])))
     else
@@ -64,11 +66,9 @@ function c_euler(pref::Preferencias, c′::Vector{<:Real}, Π_trans::Matrix{<:Re
     @unpack β, u′, inv_u′ = pref
     return reshape(inv_u′.(β*(1+r)*reshape(u′.(c′),N_a′,:) * Π_trans'), N)
 end
-function a_budget(pr::Prices, c::Vector{<:Real}, S::StateVariables)
-    @unpack r, w = pr
-    a′ = S.a
+function a_budget( c::Vector{<:Real}, a′::Vector{<:Real}, lab_inc::Vector{<:Real}, r::Real)
     # Budget constraint
-    return (a′ + c - labour_income(S, w)) / (1+r)
+    return (a′ + c - lab_inc) / (1+r)
 end
 function budget_constraint(outflow1::Vector{<:Real}, prices::Prices, S::StateVariables)
     @unpack r, w = prices
@@ -78,16 +78,74 @@ function budget_constraint(outflow1::Vector{<:Real}, prices::Prices, S::StateVar
     return (1+r)*a + labour_income(S, w) - outflow1
 end
 
+
+
+#===========================================================================
+    HOUSEHOLDS' PROBLEM: main
+===========================================================================#
+
+# Saving decision
+function savings!(gg::Generation{<:Oldest}, args...)::Nothing
+    gg.G.a′ .= 0
+    return nothing
+end
+function savings!(
+    gg::Generation, pr::Prices, c′::Vector{<:Real}, grid_a′::AbstractGrid,
+    pref::Preferencias, process_z::MarkovProcess
+)::Nothing
+    # Unpack
+    @unpack N, S, states = gg
+    @unpack r = pr
+    malla_a = gg.grid_a.nodes
+    malla_a′ = grid_a′.nodes
+    lab_inc = labour_income(S, pr.w)
+    # Initialise policy function for savings
+    a_EGM = similar(c′)
+    # Implied consumption and assets
+    c_imp = c_euler(pref, c′, process_z.Π, r, N, size(grid_a′))
+    # Invert to get policy function for savings
+    for ind_z in eachcol(states.z .== (1:size(process_z))')
+        a_imp = a_budget(c_imp[ind_z], malla_a′, lab_inc[ind_z], r)
+        a_EGM[ind_z] = interpLinear(malla_a, a_imp, malla_a′)
+    end
+    # Policy function bounds
+    @. a_EGM = clamp(a_EGM, grid_a′.min, grid_a′.max)
+    # Update policy function
+    gg.G.a′ = a_EGM
+    return nothing
+end
+
+# Consumption decision
+function consumption!(gg::Generation, pr::Prices)::Nothing
+    gg.G.c = budget_constraint(gg.G.a′, pr, gg.S)
+    return nothing
+end
+
+# Solve the household problem for one generation
+function generation_problem!(
+    gg::Generation{<:Oldest}, pr::Prices
+)
+    savings!(gg)
+    consumption!(gg, pr)
+    return nothing
+end
+function generation_problem!(
+    gg::Generation, pr::Prices, c′::Vector{<:Real}, grid_a′::AbstractGrid,
+    pref::Preferencias, process_z::MarkovProcess
+)::Nothing
+    savings!(gg, pr, c′, grid_a′, pref, process_z)
+    consumption!(gg, pr)
+    return nothing
+end
+
 # All households
-function hh_solve!(eco::Economía, cfg::Configuration)::Nothing
+function hh_solve!(eco::Economía)::Nothing
     @unpack hh, fm, pr = eco;
     @unpack gens, pref, process_z = hh;
-    @unpack cfg_hh = cfg;
     # Update policy functions for each generation
-    aux_get_guess(gg::Generation) = gg.G.c
-    solve!(cfg_hh, aux_get_guess, gens[end], pr)   # last generation
+    generation_problem!(gens[end], pr)   # last generation
     for (g, g′) in zip_backward(gens)  # previous generations
-        solve!(cfg_hh, aux_get_guess, g, pr, g′.G.c, g′.grid_a, pref, process_z)
+        generation_problem!(g, pr, g′.G.c, g′.grid_a, pref, process_z)
     end
     # Q-transition matrix
     Q_matrix!(eco.hh)
@@ -288,12 +346,12 @@ end
     GENERAL EQUILIBRIUM
 ===========================================================================#
 
-function K_market!(r_0::Real, eco::Economía, cfg::Configuration)
+function K_market!(r_0::Real, eco::Economía)
     # Update prices
     eco.pr.r = r_0
     update_w!(eco.pr, eco.fm)
     # Update households
-    hh_solve!(eco, cfg)
+    hh_solve!(eco)
     # Compute aggregates
     update_aggregates!(eco)
     @unpack A, K, L = eco.agg
@@ -315,7 +373,7 @@ function steady(hh0::Households, fm::Firms, cfg::Configuration; r_0)
     r_0 = deannualise(r_0, years_per_period)
     eco = Economía(r_0, deepcopy(hh0), fm, years_per_period);
     # General equilibrium
-    solve!(cfg.cfg_r, r_0, K_market!, eco, cfg)
+    solve!(cfg.cfg_r, r_0, K_market!, eco)
     # Update value function and Euler errors
     value!(eco.hh)
     err_euler!(eco.hh, eco.pr.r)    # avoid computing them after annualisation

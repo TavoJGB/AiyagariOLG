@@ -63,6 +63,7 @@ end
 function EGM!(pars::SolverParameters, iterator!::Function, get_guess::Function, main, args...)
     @unpack tol, maxit = pars
     for it in 1:maxit
+        println(it)
         # Initial guess
         guess = get_guess(main)
         # Iteration
