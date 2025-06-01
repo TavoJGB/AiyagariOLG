@@ -29,5 +29,5 @@ module AiyagariOLG
         export ss_analysis, ss_summarise, ss_distributional_analysis, ss_mobility, ss_graphs
 
     # Extensions
-    include("./dep/solvers/SolverEGM.jl")
+    include("./solvers/SolverEGM.jl")
 end
