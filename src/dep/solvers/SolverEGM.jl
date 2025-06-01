@@ -1,4 +1,9 @@
-module ExtSolverEGM
+module SolverEGM
+
+using AiyagariOLG
+import AiyagariOLG: EGM, Generation, Oldest, Solver, SolverParameters   # types
+import AiyagariOLG: budget_constraint, c_euler, a_budget, interpLinear  # functions
+import AiyagariOLG: @unpack
 
 #===========================================================================
     HOUSEHOLD PROBLEM
@@ -9,8 +14,8 @@ function EGM_savings!(gg::Generation{<:Oldest}, args...)::Nothing
     return nothing
 end
 function EGM_savings!(
-    gg::Generation, pr::Prices, c′::Vector{<:Real}, grid_a′::AbstractGrid,
-    pref::Preferencias, process_z::MarkovProcess
+    gg::Generation, pr, c′::Vector{<:Real}, grid_a′,
+    pref, process_z
 )::Nothing
     # Unpack
     @unpack N, S, states = gg
@@ -32,7 +37,7 @@ function EGM_savings!(
     gg.G.a′ = a_EGM
     return nothing
 end
-function EGM_consumption!(gg::Generation, pr::Prices)::Nothing
+function EGM_consumption!(gg::Generation, pr)::Nothing
     gg.G.c = budget_constraint(gg.G.a′, pr, gg.S)
     return nothing
 end
@@ -43,7 +48,7 @@ end
     ITERATION
 ===========================================================================#
 
-function EGM_iter!(gg::Generation, pr::Prices, args...)::Nothing
+function EGM_iter!(gg::Generation, pr, args...)::Nothing
     EGM_savings!(gg, pr, args...)
     EGM_consumption!(gg, pr)
     return nothing
