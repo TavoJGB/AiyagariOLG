@@ -68,16 +68,16 @@ end
 abstract type AbstractGridType end
 struct Curved <: AbstractGridType end
 struct Linear <: AbstractGridType end
-struct Basic <: AbstractGridType end
+struct Simple <: AbstractGridType end
 
 abstract type AbstractGrid end
 
-struct BasicGrid <: AbstractGrid
+struct SimpleGrid <: AbstractGrid
     N::Int
     nodes::Vector{<:Real}
 end
-_BasicGrid(; nodes) = BasicGrid(length(nodes), nodes)
-Grid(type::AbstractGridType; kwargs...) = _BasicGrid(; kwargs...)
+_SimpleGrid(; nodes) = SimpleGrid(length(nodes), nodes)
+Grid(type::AbstractGridType; kwargs...) = _SimpleGrid(; kwargs...)
 get_required_parameters(::AbstractGridType) = [:nodes]
 struct LinearGrid <: AbstractGrid
     N::Int
@@ -139,7 +139,7 @@ abstract type MarkovProcess end
     σ::Real                     # Standard deviation
     grid::AbstractGrid          # Grid for the state variable
     Π::Matrix{<:Real}           # Transition matrix
-    ss_dist::Vector{<:Real}     # Steady state distribution
+    ss_distr::Vector{<:Real}    # Steady state distribution
 end
 function _DiscreteAR1(; N::Int, ρ::Real, σ::Real, method=rouwenhorst)
     nodes, trans = method(N, ρ, σ)
@@ -151,7 +151,7 @@ function _DiscreteAR1(; N::Int, ρ::Real, σ::Real, method=rouwenhorst)
     nodes .= nodes / dot(ss_dist, nodes)
     # Transition matrix
     Π = trans' |> collect
-    return DiscreteAR1(ρ, σ, Grid(Basic(); nodes), Π, ss_dist)
+    return DiscreteAR1(ρ, σ, Grid(Simple(); nodes), Π, ss_dist)
 end
 get_DiscreteAR1_parameters() = [:N, :ρ, :σ]
 
@@ -186,21 +186,34 @@ abstract type AbstractStateIndices end
 struct StateIndices <: AbstractStateIndices
     z::Vector{<:Int}
     a::Vector{<:Int}
-    function StateIndices(; N_z::Ti, N_a::Ti) where {Ti<:Integer}
-        return new(kron(1:N_z, ones(Ti, N_a)), repeat(1:N_a, N_z))
-    end
 end
+Base.length(states::AbstractStateIndices) = length(states.a)
 struct CombinedStateIndices <: AbstractStateIndices
     age::Vector{<:Int}
     z::Vector{<:Int}
     a::Vector{<:Int}
 end
 
+function combine(vec_states::Vector{<:AbstractStateIndices})
+    ig = vcat([fill(i, length(states)) for (i, states) in enumerate(vec_states)]...)
+    iz = vcat(getfield.(vec_states, :z)...)
+    ia = vcat(getfield.(vec_states, :a)...)
+    return CombinedStateIndices(ig, iz, ia)
+end
+
 # State variables
-struct StateVariables
-    ζ                   # Age-dependent productivity
-    z::Vector{<:Real}   # Idiosyncratic productivity
-    a::Vector{<:Real}   # Beginning-of-period assets
+abstract type AbstractStateVariables end
+Base.length(S::AbstractStateVariables) = length(S.a)
+
+function assemble(Ss::Vector{<:Tsv}) where {Tsv <: AbstractStateVariables}
+    function f_extract(S, fld)
+        extracted = getfield(S, fld)
+        return extracted isa AbstractVector ? extracted : fill(extracted, length(S))
+    end
+    return hcat([vcat(f_extract.(Ss, fld)...) for fld in fieldnames(Tsv)]...)
+end
+function combine(Ss::Vector{<:Tsv}) where {Tsv <: AbstractStateVariables}
+    return Tsv(collect.(assemble(Ss) |> eachcol)...)
 end
 
 # Policy functions
@@ -217,6 +230,12 @@ mutable struct PolicyFunctions
     end
 end
 
+function combine(Gs::Vector{<:PolicyFunctions})
+    c = vcat(getfield.(Gs, :c)...)
+    a′ = vcat(getfield.(Gs, :a′)...)
+    return PolicyFunctions(c, a′)
+end
+
 # Life-cycle structure
 function get_ages(; min_age::Int, max_age::Int, years_per_period::Int)
     return range(min_age, max_age, step=years_per_period)
@@ -229,6 +248,7 @@ get_life_cycle_parameters() = [:min_age, :max_age, :years_per_period]
     GROUPS OF AGENTS
 ===========================================================================#
 
+abstract type AbstractHouseholds end
 abstract type AgentGroup end
 abstract type AbstractGenerationType end
 struct StandardGen <: AbstractGenerationType end
@@ -246,7 +266,7 @@ struct Generation{Tg<:AbstractGenerationType} <: AgentGroup
     min_a′::Real
     # States and policy functions
     states::AbstractStateIndices
-    S::StateVariables
+    S::AbstractStateVariables
     G::PolicyFunctions
     # Value function
     v::Vector{<:Real}
@@ -255,22 +275,21 @@ struct Generation{Tg<:AbstractGenerationType} <: AgentGroup
     distr::Vector{<:Real}
     euler_errors::Vector{<:Real}
 end
+
 # Initialiser
 function Generation(
-    type::AbstractGenerationType, min_age::Int, max_age::Int, grid_z::AbstractGrid, grid_a::AbstractGrid, min_a′::Real, ζ::Real
+    type::AbstractGenerationType, min_age::Int, max_age::Int, grid_z, grid_a, min_a′::Real, ζ::Real
 )
     # Matrix of state indices
-    states = StateIndices(; N_z=size(grid_z), N_a=size(grid_a))
+    states = get_StateIndices(; N_z=size(grid_z), N_a=size(grid_a))
     # Number of agents in a generation
     N = size(states.a, 1)
     # State variables
-    zz = get_node.(Ref(grid_z), states.z)
-    aa = get_node.(Ref(grid_a), states.a)
-    S = StateVariables(ζ, zz, aa)
+    S = get_StateVariables(states, ζ, grid_z, grid_a)
     # Initialise policy functions
     G = PolicyFunctions(N)
     # Initialise value function
-    vv = similar(zz)
+    vv = similar(S.z)
     # Initialise Q-transition matrix
     Q = spzeros(N, N)
     # Initialise distribution
@@ -280,23 +299,45 @@ function Generation(
     # Return structure
     return Generation{typeof(type)}(min_age, max_age, N, grid_a, min_a′, states, S, G, vv, Q, distr, euler_errs)
 end
+
+function Generations(; ages::AbstractVector, tipo_a, grid_kwargs, grid_z, ζ_f::Function)::Vector{<:Generation}
+    # Min and max ages
+    min_ages = ages[1:(end-1)]
+    max_ages = ages[2:end] .- 1
+    avg_ages = (min_ages .+ max_ages) / 2
+    # Number of generations
+    N_g = length(min_ages)
+    # Life-cycle productivity
+    malla_ζ = [ζ_f(avg_ages[ig]) for ig in 1:N_g]
+    malla_ζ .= malla_ζ / (sum(malla_ζ)/N_g)
+        # Average productivity while working: normalisation to one
+        # this works as population is equally distributed across generations (certain lifespan)
+    # Age-dependent assets grids
+    grids_a = CombinedGrid(tipo_a; ages=avg_ages, grid_kwargs...)
+    min_a′ = grid_kwargs[:min]
+    # Vector of generations
+    gens = [Generation(StandardGen(), min_ages[ig], max_ages[ig], grid_z, grids_a[ig], min_a′, malla_ζ[ig]) for ig in 2:(N_g-1)]
+    gens = vcat(Generation(Newby(), min_ages[1], max_ages[1], grid_z, grids_a[1], min_a′, malla_ζ[1]),
+                gens,
+                Generation(Oldest(), min_ages[end], max_ages[end], grid_z, grids_a[end], min_a′, malla_ζ[end]))
+    return gens
+end
+
 # Methods
 Base.size(g::Generation) = g.N
 get_N_agents(gens::Vector{<:Generation}) = sum(assemble(gens, :N))
 get_age_range(g::Generation) = string(g.min_age, "-", g.max_age)
+get_preference_parameters() = [:tipo_pref, :β, :γ]
+assemble(x, key::Symbol) = vcat(getproperty.(x, key)...)
+assemble(x, key1::Symbol, key2::Symbol) = assemble(assemble(x, key1), key2)
+assemble(gens::Vector{Generation}, f::Function, args...) = vcat([f(g, args...) for g in gens]...)
+# Example: assemble(gens, :states, :z) will return a vector of all z states across generations.
 
 # Combine generations
 function combine(gens::Vector{<:Generation})
     # Assemble variables
-    ζs = assemble(gens, g -> fill(g.S.ζ, g.N))
     min_ages = assemble(gens, g -> fill(g.min_age, g.N))
     max_ages = assemble(gens, g -> fill(g.max_age, g.N))
-    iz = assemble(gens, :states, :z)
-    ia = assemble(gens, :states, :a)
-    z = assemble(gens, :S, :z)
-    a = assemble(gens, :S, :a)
-    c = assemble(gens, :G, :c)
-    a′ = assemble(gens, :G, :a′)
     v = assemble(gens, :v)
     Q = sparse([1],[1],[NaN],1,1)
     distr = assemble(gens, :distr)
@@ -304,77 +345,19 @@ function combine(gens::Vector{<:Generation})
     # Other variables
     min_age = minimum(min_ages)
     max_age = maximum(max_ages)
-    N = length(z)
-    min_a′ = NaN  # This will be set later, if needed
+    min_a′ = NaN  # This could be a vector of min_a for each agent, if needed
     # Structures
     grids_a = CombinedGrid([g.grid_a for g in gens])
-    ig = vcat([fill(i, g.N) for (i,g) in enumerate(gens)]...)
-    states = CombinedStateIndices(ig, iz, ia)
-    S = StateVariables(ζs, z, a)
-    G = PolicyFunctions(c, a′)
+    states = combine(assemble(gens, :states))
+    S = combine(assemble(gens,:S))
+    G = combine(assemble(gens,:G))
     # Create combined generation
-    return Generation{CombinedGen}(min_age, max_age, N, grids_a, min_a′, states, S, G, v, Q, distr, euler_errors)
+    return Generation{CombinedGen}(min_age, max_age, length(S), grids_a, min_a′, states, S, G, v, Q, distr, euler_errors)
 end
 function combine(gens::Vector{<:Generation}, howmany::Int)
     howmany==1 && return gens  # don't do anything if howmany == 1
     return [combine(gens[i:(i+howmany-1)]) for i in 1:howmany:length(gens)]
 end
-
-
-
-#===========================================================================
-    HOUSEHOLDS
-===========================================================================#
-
-struct Households
-    N::Int
-    gens::Vector{Generation}
-    pref::Preferencias
-    process_z::MarkovProcess
-    # Constructors
-    function Households(;
-        ages::AbstractVector, process_z::MarkovProcess,
-        tipo_pref, pref_kwargs,
-        tipo_a, grid_kwargs,
-        ζ_f::Function
-    )
-        # Unpack
-        grid_z = process_z.grid
-        # Preferences
-        pref = Preferencias(tipo_pref; pref_kwargs...)
-        # Min and max ages
-        min_ages = ages[1:(end-1)]
-        max_ages = ages[2:end] .- 1
-        avg_ages = (min_ages .+ max_ages) / 2
-        # Number of generations
-        N_g = length(min_ages)
-        # Life-cycle productivity
-        malla_ζ = [ζ_f(avg_ages[ig]) for ig in 1:N_g]
-        malla_ζ .= malla_ζ / (sum(malla_ζ)/N_g)
-            # Average productivity while working: normalisation to one
-            # this works as population is equally distributed across generations (certain lifespan)
-        # Age-dependent assets grids
-        grids_a = CombinedGrid(tipo_a; ages=avg_ages, grid_kwargs...)
-        min_a′ = grid_kwargs[:min]
-        # Vector of generations
-        gens = [Generation(StandardGen(), min_ages[ig], max_ages[ig], grid_z, grids_a[ig], min_a′, malla_ζ[ig]) for ig in 2:(N_g-1)]
-        gens = vcat(Generation(Newby(), min_ages[1], max_ages[1], grid_z, grids_a[1], min_a′, malla_ζ[1]),
-                    gens,
-                    Generation(Oldest(), min_ages[end], max_ages[end], grid_z, grids_a[end], min_a′, malla_ζ[end]))
-        # Total number of agents
-        N = get_N_agents(gens)
-        # Return structure
-        return new(N, gens, pref, process_z)
-    end
-end
-
-# Methods
-get_preference_parameters() = [:tipo_pref, :β, :γ]
-grids(hh::Households) = hh.process_z.grid, hh.grid_a
-assemble(x, key::Symbol) = vcat(getproperty.(x, key)...)
-assemble(x, key1::Symbol, key2::Symbol) = assemble(assemble(x, key1), key2)
-assemble(gens::Vector{Generation}, f::Function, args...) = vcat([f(g, args...) for g in gens]...)
-# Example: assemble(gens, :states, :z) will return a vector of all z states across generations.
 
 
 
@@ -421,6 +404,7 @@ mutable struct TimeStructure
     years_cohort::Int
 end
 
+# Aggregates
 mutable struct Aggregates
     A::Real     # aggregate savings
     A0::Real    # aggregate beginning-of-period assets
@@ -428,32 +412,11 @@ mutable struct Aggregates
     L::Real     # aggregate labor
     Y::Real     # aggregate output
     C::Real     # aggregate consumption
-    function Aggregates(hh::Households, fm::Firms, pr::Prices)
-        # Unpack
-        @unpack gens = hh
-        @unpack ratio_KL, F = fm
-        # Assemble states and policy functions
-        a′ = assemble(gens, :G, :a′)
-        c = assemble(gens, :G, :c)
-        a = assemble(gens, :S, :a)
-        labsup = assemble(gens, g -> g.S.ζ * g.S.z)
-        # Distribution
-        distr = assemble(gens, :distr)
-        # Households
-        A = dot(distr, a′)
-        A0 = dot(distr, a)
-        C = dot(distr, c)
-        L = dot(distr, labsup)
-        # Firms
-        K = ratio_KL(pr.r) * L
-        Y = F(K, L)
-        return new(A, A0, K, L, Y, C)
-    end
 end
 
 struct Economía
     # Agents
-    hh::Households
+    hh::AbstractHouseholds
     fm::Firms
     # Prices
     pr::Prices
@@ -462,11 +425,11 @@ struct Economía
     # Time structure
     time_str::TimeStructure
     # Basic initialiser
-    function Economía(r_0::Real, hh::Households, fm::Firms, years_per_period::Int)
+    function Economía(r_0::Real, hh::AbstractHouseholds, fm::Firms, years_per_period::Int)
         # Initialise prices
         pr = Prices(r_0, get_w(r_0, fm))
         # Initialise aggregates
-        agg = Aggregates(hh, fm, pr)
+        agg = get_aggregates(hh, fm, pr)
         # Create time structure
         time_str = TimeStructure(years_per_period, years_per_period)
         # Return the structure
@@ -478,7 +441,7 @@ function update_aggregates!(eco::Economía)::Nothing
     # Unpack
     @unpack hh, fm, pr = eco
     # Compute new aggregates
-    agg = Aggregates(hh, fm, pr)
+    agg = get_aggregates(hh, fm, pr)
     # Update values in eco structure
     eco.agg.A   = agg.A
     eco.agg.A0  = agg.A0
@@ -503,6 +466,7 @@ struct Consumption <: EconomicVariable end
 struct Labour_Income <: EconomicVariable end
 struct Interest_Rate <: EconomicVariable end
 struct Capital <: EconomicVariable end
+struct Labour <: EconomicVariable end
 
 function get_economic_variable(key::Symbol)
     if key == :a′
@@ -517,6 +481,8 @@ function get_economic_variable(key::Symbol)
         return Interest_Rate
     elseif key == :K
         return Capital
+    elseif key == :L
+        return Labour
     else
         error("Unknown economic variable: $key")
     end
@@ -534,6 +500,8 @@ function get_var_string(key::Symbol)
         return "interest rate"
     elseif key == :K
         return "capital"
+    elseif key == :L
+        return "labour"
     else
         error("Unknown economic variable: $key")
     end
@@ -551,6 +519,8 @@ function get_symbol(ev::EconomicVariable)
         return :r
     elseif ev isa Capital
         return :K
+    elseif ev isa Labour
+        return :L
     else
         error("Unknown economic variable: $ev")
     end
@@ -563,6 +533,7 @@ end
 ===========================================================================#
 
 abstract type StatisticType end
+struct Total <:StatisticType end
 struct Share <:StatisticType end
 struct Percentage <:StatisticType end
 struct Mean <:StatisticType end

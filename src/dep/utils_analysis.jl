@@ -36,7 +36,7 @@ get_borrowing_constrained(::BeginningOfPeriod, g::Generation) = identify_group(g
 function get_borrowing_constrained(::BeginningOfPeriod, gens::Vector{<:Generation})
     return vcat([identify_group(g.states, :a, 1) for g in gens]...)
 end
-get_borrowing_constrained(::BeginningOfPeriod, hh::Households) = get_borrowing_constrained(BeginningOfPeriod(), hh.gens)
+get_borrowing_constrained(::BeginningOfPeriod, hh::AbstractHouseholds) = get_borrowing_constrained(BeginningOfPeriod(), hh.gens)
 
 # By default: end-of-period assets
 get_borrowing_constrained(g::Generation) = get_borrowing_constrained(EndOfPeriod(), g)
@@ -64,7 +64,7 @@ function get_mpc(g::Generation, N_z::Int)
     end
     return mpc
 end
-function get_average_mpc(hh::Households; desc::String="Average MPC")
+function get_average_mpc(hh::AbstractHouseholds; desc::String="Average MPC")
     # Preliminaries
     @unpack process_z, gens = hh
     mpc = assemble(gens, get_mpc, size(process_z))
@@ -85,7 +85,7 @@ end
 ===========================================================================#
 
 function get_pct_borrowing_constrained(
-    hh::Households;
+    hh::AbstractHouseholds;
     distr=assemble(hh.gens, :distr), desc::String="% of borrowing-constrained agents"
 )
     return Stat(Percentage(),
@@ -401,7 +401,7 @@ function plot_generation_euler_errors(g::Generation, N_z::Int; lwidth::Real=1)
     # Plot
     plot_generation_by(g, :a, :euler_errors; crits, labs=errs_labs, lwidth, ptype=scatter!)
 end
-function plot_generation_euler_errors(hh::Households; kwargs...)
+function plot_generation_euler_errors(hh::AbstractHouseholds; kwargs...)
     # Preliminaries
     @unpack gens, process_z = hh
     N_z = size(process_z)
@@ -413,7 +413,7 @@ function plot_generation_euler_errors(hh::Households; kwargs...)
     end
     return gen_plots
 end
-function plot_euler_errors(hh::Households, cfg::GraphConfig)
+function plot_euler_errors(hh::AbstractHouseholds, cfg::GraphConfig)
     # Preliminaries
     @unpack gens, pref, process_z = hh
     N_z = size(process_z)

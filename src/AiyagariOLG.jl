@@ -14,7 +14,7 @@ module AiyagariOLG
 
     # Load dependencies
     include("./dep/structs.jl")
-        export Households, Firms, Economía, Aggregates, assemble, Generation, get_age_range
+        export Firms, Economía, Aggregates, assemble, Generation, get_age_range, get_N_agents
     include("./dep/utils_computation.jl")
         # export
     include("./dep/utils_analysis.jl")
@@ -29,5 +29,17 @@ module AiyagariOLG
         export ss_analysis, ss_summarise, ss_distributional_analysis, ss_mobility, ss_graphs
 
     # Extensions
-    include("./solvers/SolverEGM.jl")
+    # include("./solvers/SolverEGM.jl")
+    include("./extensions/Basic.jl")
+    include("./extensions/Unemployment.jl")
+
+    # Choose extension
+    EXT_UNEMP = true
+    if EXT_UNEMP
+        using .Unemployment
+    else
+        using .Basic
+    end
+    export Households
+
 end

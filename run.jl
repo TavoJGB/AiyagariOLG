@@ -1,10 +1,10 @@
 using AiyagariOLG
 
 # Settings
-model = build_model(; N_z=5, N_a=500);
+model = build_model(; β=0.94, N_z=5, N_a=500);
 
 # Compute steady state
-eco = steady(model...; r_0=0.04);
+@btime eco = steady(model...; r_0=0.04);
 annualise!(eco)
 
 # Display steady state

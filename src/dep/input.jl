@@ -78,6 +78,32 @@ end
     BUILD MAIN STRUCTURES FROM PARAMETERS
 ===========================================================================#
 
+function prepare_household_builder(pars)
+    # Grids and processes
+    process_z = get_object(pars, "_z"; typesubstr="Suffix")
+    # Life-cycle structures
+    ages = get_ages(; getindex(pars, get_life_cycle_parameters())...)
+    ζ_pars = subset_namedtuple(pars, "ζ_"; typesubstr="Prefix") |> collect
+    ζ_f(age::Real)::Real = max(dot(age.^(0:(length(ζ_pars)-1))', ζ_pars), 0.0)
+    # Kwargs for households
+    pars_pref = getindex(pars, get_preference_parameters())
+    tipo_pref = pars_pref.tipo_pref
+    pref_kwargs = pars_pref[filter(key -> key != :tipo_pref, keys(pars_pref))]
+    pars_a = subset_namedtuple(pars, "_a"; typesubstr="Suffix")
+    tipo_a = pars_a.tipo
+    grid_kwargs = pars_a[filter(key -> key != :tipo, keys(pars_a))]
+    # Return
+    return (; ages, process_z, tipo_pref, pref_kwargs, tipo_a, grid_kwargs, ζ_f)
+end
+
+function build_configuration(pars)
+    # Configuration of solvers
+    cfg_r = get_object(pars, "cfg_r_")
+    cfg_graph = _GraphConfig(; subset_namedtuple(pars, "cfg_graph_")...)
+    return Configuration(cfg_r, cfg_graph, pars.years_per_period)
+end
+
+# Main function
 function build_model(
     filepath = BASE_FOLDER * "/Simulations/parameters/default_parameters.csv";
     save_pars::Bool=true,   # by default, save parameters in file
@@ -94,26 +120,10 @@ function build_model(
     save_pars && export_csv(outputpath, annual_pars; delim='=')
     # Deannualise parameters
     pars = deannualise(annual_pars, annual_pars.years_per_period)
-    # Grids and processes
-    process_z = get_object(pars, "_z"; typesubstr="Suffix")
-    # Life-cycle structures
-    ages = get_ages(; getindex(pars, get_life_cycle_parameters())...)
-    ζ_pars = subset_namedtuple(pars, "ζ_"; typesubstr="Prefix") |> collect
-    ζ_f(age::Real)::Real = max(dot(age.^(0:(length(ζ_pars)-1))', ζ_pars), 0.0)
-    # Configuration of solvers
-    cfg_r = get_object(pars, "cfg_r_")
-    cfg_graph = _GraphConfig(; subset_namedtuple(pars, "cfg_graph_")...)
-    # Kwargs for households
-    pars_pref = getindex(pars, get_preference_parameters())
-    tipo_pref = pars_pref.tipo_pref
-    pref_kwargs = pars_pref[filter(key -> key != :tipo_pref, keys(pars_pref))]
-    pars_a = subset_namedtuple(pars, "_a"; typesubstr="Suffix")
-    tipo_a = pars_a.tipo
-    grid_kwargs = pars_a[filter(key -> key != :tipo, keys(pars_a))]
     # Build structures
-    hh = Households(; ages, process_z, tipo_pref, pref_kwargs, tipo_a, grid_kwargs, ζ_f)
+    hh = build_households(pars)
     fm = Firms(; getindex(pars, get_firm_parameters())...)
-    cfg = Configuration(cfg_r, cfg_graph, pars.years_per_period)
+    cfg = build_configuration(pars)
     # Return structures
     return (; hh, fm, cfg)
 end

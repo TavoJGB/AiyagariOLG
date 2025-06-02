@@ -2,12 +2,6 @@
     HOUSEHOLDS' PROBLEM: auxiliary
 ===========================================================================#
 
-# Households' income
-function labour_income(S::StateVariables, w::Real)
-    @unpack ζ, z = S
-    return w*ζ*z
-end
-
 # Error in optimality conditions
 function err_euler(
     c::Vector{<:Real}, pref::Preferencias, Q::AbstractMatrix, r′::Real;
@@ -41,7 +35,7 @@ function err_euler!(g::Generation, pref::Preferencias, r′::Real, c′)::Nothin
     g.euler_errors .= err_euler(g.G.c, pref, g.Q, r′; c′=c′)
     return nothing
 end
-function err_euler!(hh::Households, r′)::Nothing
+function err_euler!(hh::AbstractHouseholds, r′)::Nothing
     @unpack gens, pref = hh
     # Compute euler errors for the oldest generation
     err_euler!(gens[end])
@@ -51,7 +45,7 @@ function err_euler!(hh::Households, r′)::Nothing
     end
     return nothing
 end
-function err_budget(G::PolicyFunctions, prices::Prices, S::StateVariables)
+function err_budget(G::PolicyFunctions, prices::Prices, S::AbstractStateVariables)
     @unpack c, a′ = G
     @unpack r, w = prices
     return (1+r)*S.a + labour_income(S, w) - c - a′
@@ -70,12 +64,11 @@ function a_budget( c::Vector{<:Real}, a′::Vector{<:Real}, lab_inc::Vector{<:Re
     # Budget constraint
     return (a′ + c - lab_inc) / (1+r)
 end
-function budget_constraint(outflow1::Vector{<:Real}, prices::Prices, S::StateVariables)
+function budget_constraint(outflow1::Vector{<:Real}, prices::Prices, S::AbstractStateVariables)
     @unpack r, w = prices
-    @unpack ζ, z, a = S
     # If outflow1 is consumption, then return is savings
     # If outflow1 is savings, then return is consumption
-    return (1+r)*a + labour_income(S, w) - outflow1
+    return (1+r)*S.a + labour_income(S, w) - outflow1
 end
 
 
@@ -84,75 +77,7 @@ end
     HOUSEHOLDS' PROBLEM: main
 ===========================================================================#
 
-# Saving decision
-function savings!(gg::Generation{<:Oldest}, args...)::Nothing
-    gg.G.a′ .= 0
-    return nothing
-end
-function savings!(
-    gg::Generation, pr::Prices, c′::Vector{<:Real}, grid_a′::AbstractGrid,
-    pref::Preferencias, process_z::MarkovProcess
-)::Nothing
-    # Unpack
-    @unpack N, S, states = gg
-    @unpack r = pr
-    malla_a = gg.grid_a.nodes
-    malla_a′ = grid_a′.nodes
-    lab_inc = labour_income(S, pr.w)
-    # Initialise policy function for savings
-    a_EGM = similar(c′)
-    # Implied consumption and assets
-    c_imp = c_euler(pref, c′, process_z.Π, r, N, size(grid_a′))
-    # Invert to get policy function for savings
-    for ind_z in eachcol(states.z .== (1:size(process_z))')
-        a_imp = a_budget(c_imp[ind_z], malla_a′, lab_inc[ind_z], r)
-        a_EGM[ind_z] = interpLinear(malla_a, a_imp, malla_a′)
-    end
-    # Policy function bounds
-    @. a_EGM = clamp(a_EGM, grid_a′.min, grid_a′.max)
-    # Update policy function
-    gg.G.a′ = a_EGM
-    return nothing
-end
-
-# Consumption decision
-function consumption!(gg::Generation, pr::Prices)::Nothing
-    gg.G.c = budget_constraint(gg.G.a′, pr, gg.S)
-    return nothing
-end
-
-# Solve the household problem for one generation
-function generation_problem!(
-    gg::Generation{<:Oldest}, pr::Prices
-)
-    savings!(gg)
-    consumption!(gg, pr)
-    return nothing
-end
-function generation_problem!(
-    gg::Generation, pr::Prices, c′::Vector{<:Real}, grid_a′::AbstractGrid,
-    pref::Preferencias, process_z::MarkovProcess
-)::Nothing
-    savings!(gg, pr, c′, grid_a′, pref, process_z)
-    consumption!(gg, pr)
-    return nothing
-end
-
-# All households
-function hh_solve!(eco::Economía)::Nothing
-    @unpack hh, fm, pr = eco;
-    @unpack gens, pref, process_z = hh;
-    # Update policy functions for each generation
-    generation_problem!(gens[end], pr)   # last generation
-    for (g, g′) in zip_backward(gens)  # previous generations
-        generation_problem!(g, pr, g′.G.c, g′.grid_a, pref, process_z)
-    end
-    # Q-transition matrix
-    Q_matrix!(eco.hh)
-    # Stationary distribution
-    distribution!(eco.hh)
-    return nothing
-end
+# code in Basic.jl or in the chosen extension
 
 
 
@@ -165,7 +90,7 @@ function guess_value(c::Vector{<:Real}, pref::Preferencias)
     @unpack β, u = pref
     return u.(c)/(1.0-β)
 end
-function guess_value(hh::Households)
+function guess_value(hh::AbstractHouseholds)
     return guess_value(hh.G.c, hh.pref)
 end
 
@@ -181,7 +106,7 @@ function value!(gg::Generation, pref::Preferencias, v′::Vector{<:Real})::Nothi
     gg.v .= u.(c) + β * Q' * (v′)
     return nothing
 end
-function value!(hh::Households)::Nothing
+function value!(hh::AbstractHouseholds)::Nothing
     @unpack gens, pref = hh
     value!(gens[end], pref)
     for (g, g′) in zip_backward(gens)
@@ -300,7 +225,7 @@ function Q_matrix!(gg::Generation, args...)::Nothing
     gg.Q .= Q_matrix(gg, args...)
     return nothing
 end
-function Q_matrix!(hh::Households)::Nothing
+function Q_matrix!(hh::AbstractHouseholds)::Nothing
     @unpack gens, process_z = hh
     # Compute Q-transition matrix for each generation
     Q_matrix!(gens[end])
@@ -316,11 +241,11 @@ end
     DISTRIBUTION
 ===========================================================================#
 
-function distribution!(gg::Generation{<:Newby}, process_z, N_g::Int)::Nothing
+function distribution!(gg::Generation{<:Newby}, ss_distr_z::Vector{<:Real}, N_g::Int)::Nothing
     @unpack N, states, grid_a = gg
     i0 = findfirst(grid_a.nodes .>= 0)  # assume everyone starts with (almost) zero assets
     distr = zeros(N) # Initialise distribution
-    distr[states.a .== i0] .= process_z.ss_dist/N_g
+    distr[states.a .== i0] .= ss_distr_z/N_g
     gg.distr .= distr
     return nothing
 end
@@ -328,11 +253,11 @@ function distribution!(gg::Generation, prev_Q::SparseMatrixCSC, prev_distr::Vect
     gg.distr .= prev_Q*prev_distr
     return nothing
 end
-function distribution!(hh::Households)::Nothing
+function distribution!(hh::AbstractHouseholds)::Nothing
     @unpack gens, process_z = hh
     N_g = size(gens,1)
     # Compute distribution for the youngest generation
-    distribution!(gens[1], process_z, N_g)
+    distribution!(gens[1], process_z.ss_distr, N_g)
     # Compute distribution for the rest of generations
     for (g, g_prev) in zip_forward(gens)
         distribution!(g, g_prev.Q, g_prev.distr)
@@ -367,7 +292,7 @@ end
     STEADY STATE
 ===========================================================================#
 
-function steady(hh0::Households, fm::Firms, cfg::Configuration; r_0)
+function steady(hh0::AbstractHouseholds, fm::Firms, cfg::Configuration; r_0)
     @unpack years_per_period = cfg
     # Initialise economy
     r_0 = deannualise(r_0, years_per_period)
@@ -399,11 +324,11 @@ function annualise!(G::PolicyFunctions, years_per_period::Real)::Nothing
     G.c .= G.c / years_per_period
     return nothing
 end
-function annualise!(S::StateVariables, years_per_period::Real)::Nothing
+function annualise!(S::AbstractStateVariables, years_per_period::Real)::Nothing
     S.z .= S.z / years_per_period
     return nothing
 end
-function annualise!(hh::Households, years_per_period::Real)::Nothing
+function annualise!(hh::AbstractHouseholds, years_per_period::Real)::Nothing
     @unpack gens = hh
     for g in gens
         annualise!(g.G, years_per_period)
