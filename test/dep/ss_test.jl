@@ -23,7 +23,7 @@ function ss_test(eco::Economía; tol=1e-6)
     @test maximum(abs.(vcat([g.distr - g_prev.Q*g_prev.distr for (g,g_prev) in zip_forward(gens)]...))) < tol
     # SS distribution by productivity level
     ss_z_dist = vcat([sum(distr[indZ]) for indZ in eachcol(izz .== (1:N_z)')]...)
-    @test maximum(abs.(ss_z_dist - process_z.ss_dist)) < tol
+    @test maximum(abs.(ss_z_dist - process_z.ss_distr)) < tol
     # All generations have the same share of population (<= certain lifespan)
     @test maximum(abs.(diff(assemble(gens, g -> sum(g.distr))))) < tol
 

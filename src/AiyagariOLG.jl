@@ -34,12 +34,11 @@ module AiyagariOLG
     include("./extensions/Unemployment.jl")
 
     # Choose extension
-    EXT_UNEMP = true
+    EXT_UNEMP = false
     if EXT_UNEMP
         using .Unemployment
     else
         using .Basic
     end
-    export Households
 
 end
