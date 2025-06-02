@@ -436,14 +436,14 @@ mutable struct Aggregates
         a′ = assemble(gens, :G, :a′)
         c = assemble(gens, :G, :c)
         a = assemble(gens, :S, :a)
-        z = assemble(gens, :S, :z)
+        labsup = assemble(gens, g -> g.S.ζ * g.S.z)
         # Distribution
         distr = assemble(gens, :distr)
         # Households
         A = dot(distr, a′)
         A0 = dot(distr, a)
         C = dot(distr, c)
-        L = dot(distr, z)
+        L = dot(distr, labsup)
         # Firms
         K = ratio_KL(pr.r) * L
         Y = F(K, L)

@@ -4,7 +4,7 @@
 
 function ss_summarise(eco::Economía)
     @unpack hh, agg = eco
-    @unpack K, C, Y = agg
+    @unpack K, C, Y, L = agg
     # Assemble relevant variables
     distr = assemble(hh.gens, :distr)
     a = assemble(hh.gens, :S, :a)
@@ -13,6 +13,7 @@ function ss_summarise(eco::Economía)
         r = Stat(Percentage(), eco.pr.r, :r, "Real interest rate"),
         ratio_KY = Stat(Share(), K/Y, :K, "Capital to GDP"),
         ratio_CY = Stat(Share(), C/Y, :c, "Consumption to GDP"),
+        L = Stat(Total(), L, :L, "Aggregate Labour"),
         mean_mpc = get_average_mpc(hh),
         gini_a = Gini(a, distr, :a; desc="Assets Gini"),
         pct_bconstr = get_pct_borrowing_constrained(hh; distr)
