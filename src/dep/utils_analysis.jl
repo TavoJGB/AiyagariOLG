@@ -379,6 +379,7 @@ function plot_generation_by(gens::Vector{<:Generation}, args...; kwargs...)
     for (ig,g) in pairs(gens)
         # Get the plot for the generation
         gen_plots[ig] = plot_generation_by(g, args...; kwargs...)
+        plot!(title=get_age_range(g))
     end
     return gen_plots
 end
@@ -389,6 +390,7 @@ function plot_generation_apol_by(gens, args...; lwidth::Int=1, kwargs...)
     for (p,g) in zip(plots_apol, gens)
         malla_a = g.grid_a.nodes
         plot!(p, malla_a, malla_a, line=(lwidth, :dot), color=:darkgray, label="a' = a")
+        plot!(title=get_age_range(g))
     end
     return plots_apol
 end
@@ -410,6 +412,7 @@ function plot_generation_euler_errors(hh::AbstractHouseholds; kwargs...)
     # Plot
     for (ig, g) in enumerate(gens[1:end-1])
         gen_plots[ig] = plot_generation_euler_errors(g, N_z; kwargs...)
+        plot!(title=get_age_range(g))
     end
     return gen_plots
 end
