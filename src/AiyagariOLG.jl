@@ -9,7 +9,6 @@ module AiyagariOLG
     using Parameters        # unpack
     using Plots
     using PrettyTables      # pretty_table() for display of results
-    # using QuantEcon         # rouwenhorst(), tauchen()
     using SparseArrays      # SparseMatrixCSC
 
     # Load dependencies
@@ -29,7 +28,6 @@ module AiyagariOLG
         export ss_analysis, ss_summarise, ss_distributional_analysis, ss_mobility, ss_graphs
 
     # Extensions
-    # include("./solvers/SolverEGM.jl")
     include("./extensions/Basic.jl")
     include("./extensions/Fiscal.jl")
     include("./extensions/Unemployment.jl")
