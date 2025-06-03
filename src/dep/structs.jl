@@ -276,31 +276,50 @@ struct Generation{Tg<:AbstractGenerationType} <: AgentGroup
     euler_errors::Vector{<:Real}
 end
 
+function guess_distribution(
+    states::AbstractStateIndices;
+    ss_distr_z::Vector{<:Real},
+    N_g,                    # number of generations
+    N_in_g = length(states) # number of agents in this generation
+)
+    # Initialise distribution
+    distr = Vector{Float64}(undef, N_in_g)
+    # Guess
+    for iz in 1:length(ss_distr_z)
+        indZ = (states.z .== iz)
+        # Assign the steady state distribution to the state
+        distr[indZ] .= ss_distr_z[iz]/sum(indZ)
+    end
+    return distr/N_g
+end
+
 # Initialiser
 function Generation(
-    type::AbstractGenerationType, min_age::Int, max_age::Int, grid_z, grid_a, min_a′::Real, ζ::Real
+    type::AbstractGenerationType, min_age::Int, max_age::Int,
+    grid_z::AbstractGrid, grid_a::AbstractGrid, min_a′::Real, ζ::Real;
+    kwargs...
 )
     # Matrix of state indices
     states = get_StateIndices(; N_z=size(grid_z), N_a=size(grid_a))
     # Number of agents in a generation
-    N = size(states.a, 1)
+    N_g = size(states.a, 1)
     # State variables
     S = get_StateVariables(states, ζ, grid_z, grid_a)
     # Initialise policy functions
-    G = PolicyFunctions(N)
+    G = PolicyFunctions(N_g)
     # Initialise value function
     vv = similar(S.z)
     # Initialise Q-transition matrix
-    Q = spzeros(N, N)
+    Q = spzeros(N_g, N_g)   # it does not need to be squared, if generations have different sizes
     # Initialise distribution
-    distr = fill(1/N, N)
+    distr = guess_distribution(states; kwargs...)
     # Initialise euler errors
     euler_errs = similar(distr)
     # Return structure
-    return Generation{typeof(type)}(min_age, max_age, N, grid_a, min_a′, states, S, G, vv, Q, distr, euler_errs)
+    return Generation{typeof(type)}(min_age, max_age, N_g, grid_a, min_a′, states, S, G, vv, Q, distr, euler_errs)
 end
 
-function Generations(; ages::AbstractVector, tipo_a, grid_kwargs, grid_z, ζ_f::Function)::Vector{<:Generation}
+function Generations(; ages::AbstractVector, tipo_a, grid_a_kwargs, grid_z, ζ_f::Function, kwargs...)::Vector{<:Generation}
     # Min and max ages
     min_ages = ages[1:(end-1)]
     max_ages = ages[2:end] .- 1
@@ -313,13 +332,13 @@ function Generations(; ages::AbstractVector, tipo_a, grid_kwargs, grid_z, ζ_f::
         # Average productivity while working: normalisation to one
         # this works as population is equally distributed across generations (certain lifespan)
     # Age-dependent assets grids
-    grids_a = CombinedGrid(tipo_a; ages=avg_ages, grid_kwargs...)
-    min_a′ = grid_kwargs[:min]
+    grids_a = CombinedGrid(tipo_a; ages=avg_ages, grid_a_kwargs...)
+    min_a′ = grid_a_kwargs[:min]
     # Vector of generations
-    gens = [Generation(StandardGen(), min_ages[ig], max_ages[ig], grid_z, grids_a[ig], min_a′, malla_ζ[ig]) for ig in 2:(N_g-1)]
-    gens = vcat(Generation(Newby(), min_ages[1], max_ages[1], grid_z, grids_a[1], min_a′, malla_ζ[1]),
+    gens = [Generation(StandardGen(), min_ages[ig], max_ages[ig], grid_z, grids_a[ig], min_a′, malla_ζ[ig]; N_g, kwargs...) for ig in 2:(N_g-1)]
+    gens = vcat(Generation(Newby(), min_ages[1], max_ages[1], grid_z, grids_a[1], min_a′, malla_ζ[1]; N_g, kwargs...),
                 gens,
-                Generation(Oldest(), min_ages[end], max_ages[end], grid_z, grids_a[end], min_a′, malla_ζ[end]))
+                Generation(Oldest(), min_ages[end], max_ages[end], grid_z, grids_a[end], min_a′, malla_ζ[end]; N_g, kwargs...))
     return gens
 end
 
@@ -405,7 +424,8 @@ mutable struct TimeStructure
 end
 
 # Aggregates
-mutable struct Aggregates
+abstract type AbstractAggregates end
+mutable struct Aggregates <: AbstractAggregates
     A::Real     # aggregate savings
     A0::Real    # aggregate beginning-of-period assets
     K::Real     # aggregate capital
@@ -414,14 +434,15 @@ mutable struct Aggregates
     C::Real     # aggregate consumption
 end
 
-struct Economía
+abstract type AbstractEconomy end
+struct Economía <: AbstractEconomy
     # Agents
     hh::AbstractHouseholds
     fm::Firms
     # Prices
     pr::Prices
     # Aggregates
-    agg::Aggregates
+    agg::AbstractAggregates
     # Time structure
     time_str::TimeStructure
     # Basic initialiser
@@ -437,7 +458,7 @@ struct Economía
     end
 end
 
-function update_aggregates!(eco::Economía)::Nothing
+function update_aggregates!(eco::AbstractEconomy)::Nothing
     # Unpack
     @unpack hh, fm, pr = eco
     # Compute new aggregates

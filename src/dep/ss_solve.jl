@@ -48,7 +48,7 @@ end
 function err_budget(G::PolicyFunctions, prices::Prices, S::AbstractStateVariables)
     @unpack c, a′ = G
     @unpack r, w = prices
-    return (1+r)*S.a + labour_income(S, w) - c - a′
+    return S.a + income(S, prices) - c - a′
 end
 function err_budget(eco::Economía)
     @unpack hh, pr = eco
@@ -64,11 +64,11 @@ function a_budget( c::Vector{<:Real}, a′::Vector{<:Real}, lab_inc::Vector{<:Re
     # Budget constraint
     return (a′ + c - lab_inc) / (1+r)
 end
-function budget_constraint(outflow1::Vector{<:Real}, prices::Prices, S::AbstractStateVariables)
-    @unpack r, w = prices
+function budget_constraint(outflow1::Vector{<:Real}, S::AbstractStateVariables, args...)
     # If outflow1 is consumption, then return is savings
     # If outflow1 is savings, then return is consumption
-    return (1+r)*S.a + labour_income(S, w) - outflow1
+    # Income includes capital income (r*a)
+    return S.a + income(S, args...) - outflow1
 end
 
 
@@ -132,8 +132,9 @@ function get_w(r::Real, firms::Firms)::Real
     return (1.0 - α) * (α / (r + δ))^(α / (1.0 - α))
 end
 
-function update_w!(prices::Prices, firms::Firms)::Nothing
-    prices.w = get_w(prices.r, firms)
+function update_w!(eco::AbstractEconomy)::Nothing
+    @unpack fm, pr = eco
+    pr.w = get_w(pr.r, fm)
     return nothing
 end
 
@@ -271,10 +272,10 @@ end
     GENERAL EQUILIBRIUM
 ===========================================================================#
 
-function K_market!(r_0::Real, eco::Economía)
+function K_market!(r_0::Real, eco::AbstractEconomy)
     # Update prices
     eco.pr.r = r_0
-    update_w!(eco.pr, eco.fm)
+    update_w!(eco)
     # Update households
     hh_solve!(eco)
     # Compute aggregates
@@ -312,7 +313,7 @@ end
     ANNUALISE RESULTS
 ===========================================================================#
 
-function annualise!(eco::Economía)::Nothing
+function annualise!(eco::AbstractEconomy)::Nothing
     @unpack years_per_period = eco.time_str
     annualise!(eco.hh, years_per_period)
     annualise!(eco.pr, years_per_period)
@@ -343,7 +344,7 @@ end
 function deannualise(r_annual::Real, years_per_period::Real)
     return (1+r_annual)^years_per_period - 1
 end
-function annualise!(agg::Aggregates, years_per_period::Real)::Nothing
+function annualise!(agg::AbstractAggregates, years_per_period::Real)::Nothing
     agg.Y /= years_per_period
     agg.C /= years_per_period
     return nothing

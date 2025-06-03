@@ -31,10 +31,11 @@ module AiyagariOLG
     # Extensions
     # include("./solvers/SolverEGM.jl")
     include("./extensions/Basic.jl")
+    include("./extensions/Fiscal.jl")
     include("./extensions/Unemployment.jl")
 
     # Choose extension
-    EXT_UNEMP = false
+    EXT_UNEMP = true
     if EXT_UNEMP
         using .Unemployment
     else

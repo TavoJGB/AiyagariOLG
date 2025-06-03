@@ -4,26 +4,18 @@
 
 function get_object(pars, substr; typesubstr::String="Prefix")
     subset = subset_namedtuple(pars, substr; typesubstr)
-    tipo = eval(subset.tipo)
+    tipo = eval(subset.tipo)    # eval, in case tipo is a symbol
     req_pars = get_required_parameters(tipo)
     return _get_object(tipo; getindex(subset, req_pars)...)
 end
 function get_required_parameters(tipo::DataType)
-    if tipo <: MarkovProcess
-        tiposhort = split(string(tipo),".")[end]
-        return "get_$(tiposhort)_parameters()" |> Meta.parse |> eval
-    else
-        return get_required_parameters(tipo())
-    end
+    tiposhort = split(string(tipo),".")[end]
+    return "get_$(tiposhort)_parameters()" |> Meta.parse |> eval
 end
 
 function _get_object(tipo::DataType; kwargs...)
-    if tipo <: MarkovProcess
-        tiposhort = split(string(tipo),".")[end]
-        return eval(Meta.parse("_$(tiposhort)"))(; kwargs...)
-    else
-        return _get_object(tipo(); kwargs...)
-    end
+    tiposhort = split(string(tipo),".")[end]
+    return eval(Meta.parse("_$(tiposhort)"))(; kwargs...)
 end
 _get_object(tipo::SolverType; kwargs...) = Solver(tipo; kwargs...)
 _get_object(tipo::AbstractGridType; kwargs...) = Grid(tipo; kwargs...)
@@ -91,9 +83,9 @@ function prepare_household_builder(pars)
     pref_kwargs = pars_pref[filter(key -> key != :tipo_pref, keys(pars_pref))]
     pars_a = subset_namedtuple(pars, "_a"; typesubstr="Suffix")
     tipo_a = pars_a.tipo
-    grid_kwargs = pars_a[filter(key -> key != :tipo, keys(pars_a))]
+    grid_a_kwargs = pars_a[filter(key -> key != :tipo, keys(pars_a))]
     # Return
-    return (; ages, process_z, tipo_pref, pref_kwargs, tipo_a, grid_kwargs, ζ_f)
+    return (; ages, process_z, tipo_pref, pref_kwargs, tipo_a, grid_a_kwargs, ζ_f)
 end
 
 function build_configuration(pars)
@@ -108,6 +100,7 @@ function build_model(
     filepath = BASE_FOLDER * "/Simulations/parameters/default_parameters.csv";
     save_pars::Bool=true,   # by default, save parameters in file
     outputpath = BASE_FOLDER * "/Simulations/parameters/latest_simulation.csv",
+    fiscal::Bool=false,  # if true, build a government too
     kwargs...
 )
     # println(pwd())
@@ -125,5 +118,11 @@ function build_model(
     fm = Firms(; getindex(pars, get_firm_parameters())...)
     cfg = build_configuration(pars)
     # Return structures
-    return (; hh, fm, cfg)
+    if fiscal
+        @eval using .Fiscal
+        gb = build_government(pars, hh.gens)
+        return (; hh, fm, gb, cfg)
+    else
+        return (; hh, fm, cfg)
+    end
 end

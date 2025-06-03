@@ -2,7 +2,7 @@
     SUMMARISE RESULTS
 ===========================================================================#
 
-function ss_summarise(eco::Economía)
+function ss_summarise(eco::AbstractEconomy)
     @unpack hh, agg = eco
     @unpack K, C, Y, L = agg
     # Assemble relevant variables
@@ -40,7 +40,7 @@ function preliminaries_quantile_matrix(; nq::Int=5, top::Real=0.0)
     return divs, labs, quantmat_kwargs
 end
 
-function ss_distributional_analysis(eco::Economía; kwargs...)
+function ss_distributional_analysis(eco::AbstractEconomy; kwargs...)
     @unpack hh, pr = eco
     @unpack gens = hh;
     # Assemble relevant variables
@@ -58,7 +58,7 @@ function ss_distributional_analysis(eco::Economía; kwargs...)
     return [quantiles_inc, quantiles_wth]
 end
 
-function ss_mobility(eco::Economía;
+function ss_mobility(eco::AbstractEconomy;
     nt::Int,    # number of periods ahead in the future
     nq::Int=5
 )
@@ -161,7 +161,7 @@ function Base.show(xs::Vector{<:StatFutureDistr{Ts}}; years_per_period=1) where 
 end
 
 # Main function
-function ss_analysis(eco::Economía;
+function ss_analysis(eco::AbstractEconomy;
                      save_results::Bool=true,   # by default, save results in file
                      filepath = BASE_FOLDER * "/Simulations/results/latest_simulation.csv",
                      kwargs...)::Nothing

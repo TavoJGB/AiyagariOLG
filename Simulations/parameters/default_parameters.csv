@@ -28,6 +28,9 @@ years_per_period=5
 ζ_1= 2.414e+03
 ζ_2=-8.0
 ζ_3=-1.234e-01
+# Public sector
+trf_tipo=:UnemploymentInsurance
+trf_ρ=0.7
 # Solver parameters: K market
 cfg_r_tipo=LinearJumps()
 cfg_r_objective="Capital market"

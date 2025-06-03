@@ -1,19 +1,18 @@
 module Unemployment
 
-
-
 #===========================================================================
     IMPORTS
 ===========================================================================#
 
 # Types
-using ..AiyagariOLG: AbstractStateVariables, AbstractHouseholds, Aggregates, AbstractStateIndices
-using ..AiyagariOLG: Generation, Oldest, Newby, Preferencias, MarkovProcess, Prices
+using ..AiyagariOLG: AbstractStateVariables, AbstractHouseholds, AbstractStateIndices, AbstractEconomy
+using ..AiyagariOLG: Generation, Oldest, Newby, Preferencias, MarkovProcess, Prices, Firms, Configuration
+using ..AiyagariOLG: TimeStructure
 
 # Methods
 using ..AiyagariOLG: Generations, prepare_household_builder, distribution!, Q_vecs!, decision_mat
-using ..AiyagariOLG: c_euler, a_budget, budget_constraint
-using ..AiyagariOLG: assemble, get_node, get_N_agents, identify_group
+using ..AiyagariOLG: c_euler, a_budget, budget_constraint, value!, err_euler!, solve!, K_market!
+using ..AiyagariOLG: assemble, get_node, get_N_agents, identify_group, deannualise, get_w
 
 # Graphs
 using ..AiyagariOLG: plot_generation_by, plot_generation_apol_by, plot_generation_distr
@@ -22,10 +21,15 @@ using ..AiyagariOLG: plot_histogram_by_group
 
 # Functions that will be overridden/extended
 import ..AiyagariOLG: Q_matrix, Q_matrix!, distribution!, ss_graphs, GraphConfig, combine
+import ..AiyagariOLG: guess_distribution, steady, update_aggregates!, annualise!
 
 # Other
 using ..AiyagariOLG: @unpack, dot, sparse, interpLinear, zip_backward, zip_forward
 using ..AiyagariOLG.Plots
+
+# Public sector
+using ..AiyagariOLG.Fiscal
+# export build_government, UnemploymentInsurance, get_UnemploymentInsurance_parameters, _UnemploymentInsurance
 
 
 
@@ -84,7 +88,6 @@ export get_StateVariables
     LABOUR MARKET TRANSITIONS
 ===========================================================================#
 
-
 struct BasicMarkov <: MarkovProcess
     Π::Matrix{<:Real}           # Transition matrix
     ss_distr::Vector{<:Real}    # Steady state distribution
@@ -105,6 +108,25 @@ end
     HOUSEHOLDS
 ===========================================================================#
 
+function guess_distribution(
+    states::UnempStateIndices;
+    ss_distr_z::Vector{<:Real},
+    ss_distr_emp::Vector{<:Real},
+    N_g,                    # number of generations
+    N_in_g = length(states) # number of agents in this generation
+)
+    # Initialise distribution
+    distr = Vector{Real}(undef, N_in_g)
+    # Guess
+    for iz in 1:length(ss_distr_z)
+        for iemp in 1:length(ss_distr_emp)
+            ind = @. (states.z == iz) & (states.emp == iemp)
+            distr[ind] .= ss_distr_z[iz]*ss_distr_emp[iemp]/sum(ind)
+        end
+    end
+    return distr/N_g
+end
+
 struct UnempHouseholds <: AbstractHouseholds
     N::Int
     gens::Vector{<:Generation}
@@ -115,7 +137,7 @@ struct UnempHouseholds <: AbstractHouseholds
         # Preferences
         pref = Preferencias(tipo_pref; pref_kwargs...)
         # Vector of generations
-        gens = Generations(; grid_z = process_z.grid, kwargs...)
+        gens = Generations(; grid_z = process_z.grid, ss_distr_z = process_z.ss_distr, ss_distr_emp = process_emp.ss_distr, kwargs...)
         # Total number of agents
         N = get_N_agents(gens)
         # Return structure
@@ -138,6 +160,12 @@ function labour_income(S::UnempStateVariables, w::Real)
     return w*ζ*z.*emp
 end
 export labour_income
+function income(S::UnempStateVariables, gb::Government, pr::Prices)
+    @unpack r, w = pr
+    @unpack tax, trf = gb
+    return r*S.a + get_net.(labour_income(S, w), tax) + get_transfers(S,w,trf)
+end
+export income
 
 
 
@@ -145,10 +173,12 @@ export labour_income
     AGGREGATES
 ===========================================================================#
 
-function get_aggregates(hh::AbstractHouseholds, firms, pr::Prices)
+function get_aggregates(hh::AbstractHouseholds, firms, gb::Government, pr::Prices)
     # Unpack
     @unpack gens = hh
     @unpack ratio_KL, F = firms
+    @unpack tax, trf = gb
+    @unpack r, w = pr
     # Assemble states and policy functions
     a′ = assemble(gens, :G, :a′)
     c = assemble(gens, :G, :c)
@@ -162,11 +192,57 @@ function get_aggregates(hh::AbstractHouseholds, firms, pr::Prices)
     C = dot(distr, c)
     L = dot(distr, labsup)
     # Firms
-    K = ratio_KL(pr.r) * L
+    K = ratio_KL(r) * L
     Y = F(K, L)
-    return Aggregates(A, A0, K, L, Y, C)
+    # Government
+    TR = get_tax_revenue(L, w, tax)  # this works only if tax is linear
+    PE = dot(assemble(gens, g -> get_transfers(g.S, w, trf)), distr)
+    # Structure
+    return FiscalAggregates(A, A0, C, L, K, Y, TR, PE)
 end
 export get_aggregates
+
+function update_aggregates!(eco::FiscalEconomy)::Nothing
+    # Unpack
+    @unpack hh, fm, pr, gb = eco
+    # Compute new aggregates
+    agg = get_aggregates(hh, fm, gb, pr)
+    # Update values in eco structure
+    eco.agg.A   = agg.A
+    eco.agg.A0  = agg.A0
+    eco.agg.K   = agg.K
+    eco.agg.L   = agg.L
+    eco.agg.Y   = agg.Y
+    eco.agg.C   = agg.C
+    eco.agg.TR  = agg.TR
+    eco.agg.PE  = agg.PE
+    return nothing
+end
+
+function annualise!(agg::FiscalAggregates, years_per_period::Real)::Nothing
+    agg.Y /= years_per_period
+    agg.C /= years_per_period
+    agg.TR /= years_per_period
+    agg.PE /= years_per_period
+    return nothing
+end
+
+
+
+#===========================================================================
+    ECONOMY initialiser
+===========================================================================#
+
+function build_FiscalEconomy(r_0::Real, hh::AbstractHouseholds, fm::Firms, gb::Government, years_per_period::Int)
+    # Initialise prices
+    pr = Prices(r_0, get_w(r_0, fm))
+    # Initialise aggregates
+    agg = get_aggregates(hh, fm, gb, pr)
+    # Create time structure
+    time_str = TimeStructure(years_per_period, years_per_period)
+    # Return the structure
+    return FiscalEconomy(hh, fm, gb, pr, agg, time_str)
+end
 
 
 
@@ -203,7 +279,7 @@ function Q_matrix(
     return sparse(indx_Q, indy_Q, vals_Q, N, N)
 end
 
-# Override original method
+# Extend original method
 function Q_matrix!(hh::UnempHouseholds)::Nothing
     @unpack gens, process_z, process_emp = hh
     # Compute Q-transition matrix for each generation
@@ -257,15 +333,16 @@ function savings!(gg::Generation{<:Oldest}, args...)::Nothing
     return nothing
 end
 function savings!(
-    gg::Generation, pr::Prices, c′::Vector{<:Real}, grid_a′,
+    gg::Generation, gb::Government, pr::Prices, c′::Vector{<:Real}, grid_a′,
     pref::Preferencias, Π_z::Matrix{<:Real}, Π_emp::Matrix{<:Real}
 )::Nothing
     # Unpack
     @unpack N, S, states = gg
     @unpack r, w = pr
+    @unpack tax, trf = gb
     malla_a = gg.grid_a.nodes
     malla_a′ = grid_a′.nodes
-    lab_inc = labour_income(S, w)
+    lab_inc = get_net.(labour_income(S, w), tax) + get_transfers(S,w,trf)
     # Initialise policy function for savings
     a_EGM = similar(c′)
     # Transition probabilities
@@ -287,36 +364,36 @@ function savings!(
 end
 
 # Consumption decision
-function consumption!(gg::Generation, pr::Prices)::Nothing
-    gg.G.c = budget_constraint(gg.G.a′, pr, gg.S)
+function consumption!(gg::Generation, args...)::Nothing
+    gg.G.c .= budget_constraint(gg.G.a′, gg.S, args...)
     return nothing
 end
 
 # Solve the household problem for one generation
-function generation_problem!(gg::Generation{<:Oldest}, pr::Prices)::Nothing
+function generation_problem!(gg::Generation{<:Oldest}, gb::Government, pr::Prices)::Nothing
     savings!(gg)
-    consumption!(gg, pr)
+    consumption!(gg, gb, pr)
     return nothing
 end
 function generation_problem!(
-    gg::Generation, pr::Prices, c′::Vector{<:Real}, grid_a′,
-    pref::Preferencias, Π_z::Matrix{<:Real}, Π_emp::Matrix{<:Real}
+    gg::Generation, gb::Government, pr::Prices, c′::Vector{<:Real},
+    grid_a′, pref::Preferencias, Π_z::Matrix{<:Real}, Π_emp::Matrix{<:Real}
 )::Nothing
-    savings!(gg, pr, c′, grid_a′, pref, Π_z, Π_emp)
-    consumption!(gg, pr)
+    savings!(gg, gb, pr, c′, grid_a′, pref, Π_z, Π_emp)
+    consumption!(gg, gb, pr)
     return nothing
 end
 
 # All households
 function hh_solve!(eco)::Nothing
-    @unpack hh, fm, pr = eco;
+    @unpack hh, fm, gb, pr = eco;
     @unpack gens, pref, process_z, process_emp = hh;
     Π_z = process_z.Π
     Π_emp = process_emp.Π
     # Update policy functions for each generation
-    generation_problem!(gens[end], pr)   # last generation
-    for (g, g′) in zip_backward(gens)  # previous generations
-        generation_problem!(g, pr, g′.G.c, g′.grid_a, pref, Π_z, Π_emp)
+    generation_problem!(gens[end], gb, pr)      # last generation
+    for (g, g′) in zip_backward(gens)           # previous generations
+        generation_problem!(g, gb, pr, g′.G.c, g′.grid_a, pref, Π_z, Π_emp)
     end
     # Q-transition matrix
     Q_matrix!(eco.hh)
@@ -325,6 +402,26 @@ function hh_solve!(eco)::Nothing
     return nothing
 end
 export hh_solve!
+
+
+
+#===========================================================================
+    STEADY STATE
+===========================================================================#
+
+function steady(hh0::AbstractHouseholds, fm::Firms, gb::Government, cfg::Configuration; r_0)
+    @unpack years_per_period = cfg
+    # Initialise economy
+    r_0 = deannualise(r_0, years_per_period)
+    eco = build_FiscalEconomy(r_0, deepcopy(hh0), fm, gb, years_per_period);
+    # General equilibrium
+    solve!(cfg.cfg_r, r_0, K_market!, eco)
+    # Update value function and Euler errors
+    value!(eco.hh)
+    err_euler!(eco.hh, eco.pr.r)    # avoid computing them after annualisation
+    # Return the steady state economy
+    return eco
+end
 
 
 

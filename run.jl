@@ -1,8 +1,8 @@
 using AiyagariOLG
 
 # Settings
-# model = build_model(; β=0.93, N_z=5, N_a=500, max_a=40);    # with unemployment, lower β
-model = build_model(; N_z=5, N_a=500);
+model = build_model(; β=0.93, N_z=5, N_a=500, max_a=40, fiscal=true);    # with unemployment, lower β
+# model = build_model(; N_z=5, N_a=500);
 
 # Compute steady state
 eco = steady(model...; r_0=0.04);

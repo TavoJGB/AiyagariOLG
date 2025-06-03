@@ -1,7 +1,5 @@
 module Basic
 
-
-
 #===========================================================================
     IMPORTS
 ===========================================================================#
@@ -60,7 +58,7 @@ struct Households <: AbstractHouseholds
         # Preferences
         pref = Preferencias(tipo_pref; pref_kwargs...)
         # Vector of generations
-        gens = Generations(; grid_z = process_z.grid, kwargs...)
+        gens = Generations(; grid_z=process_z.grid, ss_distr_z=process_z.ss_distr, kwargs...)
         # Total number of agents
         N = get_N_agents(gens)
         # Return structure
@@ -116,6 +114,11 @@ function labour_income(S::AbstractStateVariables, w::Real)
     return w*ζ*z
 end
 export labour_income
+function income(S::AbstractStateVariables, prices)
+    @unpack r,w = prices
+    return r*S.a + labour_income(S, w)
+end
+export income
 
 # Saving decision
 function savings!(gg::Generation{<:Oldest}, args...)::Nothing
@@ -149,8 +152,8 @@ function savings!(
 end
 
 # Consumption decision
-function consumption!(gg::Generation, prices)::Nothing
-    gg.G.c = budget_constraint(gg.G.a′, prices, gg.S)
+function consumption!(gg::Generation, args...)::Nothing
+    gg.G.c = budget_constraint(gg.G.a′, gg.S, args...)
     return nothing
 end
 
