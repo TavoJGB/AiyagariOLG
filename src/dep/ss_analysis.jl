@@ -190,10 +190,9 @@ end
     GRAPHS
 ===========================================================================#
 
-function ss_graphs(eco::Economía, cfg::GraphConfig)::Nothing
+function ss_graphs(hh::AbstractHouseholds, pr::Prices, cfg::GraphConfig)::Nothing
     # PRELIMINARIES
     # Unpacking
-    @unpack hh, pr = eco;
     @unpack process_z, gens = hh;
     @unpack w = pr;
     # Combine generations (if needed)
@@ -201,7 +200,7 @@ function ss_graphs(eco::Economía, cfg::GraphConfig)::Nothing
     red_gens = combine(gens, combine_gens);
     # Identify least and most productive groups
     N_z = size(process_z)
-    crit_z = g -> [identify_group(g.states.z, 1), identify_group(g.states.z, N_z)]
+    crit_z = g -> [identify_group(g.states.z, 1) identify_group(g.states.z, N_z)]
 
     # POLICY FUNCTIONS (by productivity group)
     # Savings
@@ -224,7 +223,9 @@ function ss_graphs(eco::Economía, cfg::GraphConfig)::Nothing
 
     # EULER ERRORS (by productivity group, ignore oldest generation)
     # plot_euler_errors(hh, pr.r, cfg)
-    tiled_plot(plot_generation_euler_errors(hh; cfg.lwidth), cfg, "Euler errors by age group")
+    tiled_plot( plot_generation_euler_errors_by( gens, :z, N_z;
+                                                cfg.lwidth, labs=["low z"; repeat([""], N_z-2); "high z"]),
+                cfg, "Euler errors by age group")
     Plots.savefig(figpath * "ss_euler_err_byage.png")
     plot_euler_errors(hh, cfg)
     Plots.savefig(figpath * "ss_euler_err.png")

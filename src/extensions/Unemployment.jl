@@ -8,18 +8,24 @@ module Unemployment
 
 # Types
 using ..AiyagariOLG: AbstractStateVariables, AbstractHouseholds, Aggregates, AbstractStateIndices
-using ..AiyagariOLG: Generation, Oldest, Newby, Preferencias, MarkovProcess
+using ..AiyagariOLG: Generation, Oldest, Newby, Preferencias, MarkovProcess, Prices
 
 # Methods
 using ..AiyagariOLG: Generations, prepare_household_builder, distribution!, Q_vecs!, decision_mat
 using ..AiyagariOLG: c_euler, a_budget, budget_constraint
-using ..AiyagariOLG: assemble, get_node, get_N_agents
+using ..AiyagariOLG: assemble, get_node, get_N_agents, identify_group
+
+# Graphs
+using ..AiyagariOLG: plot_generation_by, plot_generation_apol_by, plot_generation_distr
+using ..AiyagariOLG: plot_generation_euler_errors_by, plot_euler_errors, tiled_plot
+using ..AiyagariOLG: plot_histogram_by_group
 
 # Functions that will be overridden/extended
-import ..AiyagariOLG: Q_matrix, Q_matrix!, distribution!
+import ..AiyagariOLG: Q_matrix, Q_matrix!, distribution!, ss_graphs, GraphConfig, combine
 
 # Other
 using ..AiyagariOLG: @unpack, dot, sparse, interpLinear, zip_backward, zip_forward
+using ..AiyagariOLG.Plots
 
 
 
@@ -38,6 +44,19 @@ function get_StateIndices(; N_z::Ti, N_a::Ti) where {Ti<:Integer}
                                 repeat(1:N_a, N_z*2))
 end
 export get_StateIndices
+struct CombinedUnempStateIndices <: AbstractStateIndices
+    age::Vector{<:Int}
+    emp::Vector{<:Int}
+    z::Vector{<:Int}
+    a::Vector{<:Int}
+end
+function combine(vec_states::Vector{<:UnempStateIndices})
+    ig      = vcat([fill(i, length(states)) for (i, states) in enumerate(vec_states)]...)
+    iemp    = vcat(getfield.(vec_states, :emp)...)
+    iz      = vcat(getfield.(vec_states, :z)...)
+    ia      = vcat(getfield.(vec_states, :a)...)
+    return CombinedUnempStateIndices(ig, iemp, iz, ia)
+end
 
 struct UnempStateVariables <: AbstractStateVariables
     emp::BitVector          # Employment status (1 if employed)
@@ -126,7 +145,7 @@ export labour_income
     AGGREGATES
 ===========================================================================#
 
-function get_aggregates(hh::AbstractHouseholds, firms, prices)
+function get_aggregates(hh::AbstractHouseholds, firms, pr::Prices)
     # Unpack
     @unpack gens = hh
     @unpack ratio_KL, F = firms
@@ -143,7 +162,7 @@ function get_aggregates(hh::AbstractHouseholds, firms, prices)
     C = dot(distr, c)
     L = dot(distr, labsup)
     # Firms
-    K = ratio_KL(prices.r) * L
+    K = ratio_KL(pr.r) * L
     Y = F(K, L)
     return Aggregates(A, A0, K, L, Y, C)
 end
@@ -238,12 +257,12 @@ function savings!(gg::Generation{<:Oldest}, args...)::Nothing
     return nothing
 end
 function savings!(
-    gg::Generation, prices, c′::Vector{<:Real}, grid_a′,
+    gg::Generation, pr::Prices, c′::Vector{<:Real}, grid_a′,
     pref::Preferencias, Π_z::Matrix{<:Real}, Π_emp::Matrix{<:Real}
 )::Nothing
     # Unpack
     @unpack N, S, states = gg
-    @unpack r, w = prices
+    @unpack r, w = pr
     malla_a = gg.grid_a.nodes
     malla_a′ = grid_a′.nodes
     lab_inc = labour_income(S, w)
@@ -268,23 +287,23 @@ function savings!(
 end
 
 # Consumption decision
-function consumption!(gg::Generation, prices)::Nothing
-    gg.G.c = budget_constraint(gg.G.a′, prices, gg.S)
+function consumption!(gg::Generation, pr::Prices)::Nothing
+    gg.G.c = budget_constraint(gg.G.a′, pr, gg.S)
     return nothing
 end
 
 # Solve the household problem for one generation
-function generation_problem!(gg::Generation{<:Oldest}, prices)::Nothing
+function generation_problem!(gg::Generation{<:Oldest}, pr::Prices)::Nothing
     savings!(gg)
-    consumption!(gg, prices)
+    consumption!(gg, pr)
     return nothing
 end
 function generation_problem!(
-    gg::Generation, prices, c′::Vector{<:Real}, grid_a′,
+    gg::Generation, pr::Prices, c′::Vector{<:Real}, grid_a′,
     pref::Preferencias, Π_z::Matrix{<:Real}, Π_emp::Matrix{<:Real}
 )::Nothing
-    savings!(gg, prices, c′, grid_a′, pref, Π_z, Π_emp)
-    consumption!(gg, prices)
+    savings!(gg, pr, c′, grid_a′, pref, Π_z, Π_emp)
+    consumption!(gg, pr)
     return nothing
 end
 
@@ -306,5 +325,69 @@ function hh_solve!(eco)::Nothing
     return nothing
 end
 export hh_solve!
+
+
+
+#===========================================================================
+    GRAPHS
+===========================================================================#
+
+function ss_graphs(hh::UnempHouseholds, pr::Prices, cfg::GraphConfig)::Nothing
+    # PRELIMINARIES
+    # Unpacking
+    @unpack process_z, gens = hh;
+    @unpack w = pr;
+    # Combine generations (if needed)
+    @unpack figpath, combine_gens = cfg;
+    figpath = figpath * "unemployment/"
+    red_gens = combine(gens, combine_gens);
+    # Identify least and most productive groups
+    N_z = size(process_z)
+    crit_z_u = g -> [identify_group(g.states.z, 1) identify_group(g.states.z, N_z)] .& identify_group(g.states.emp, 1)
+    crit_z_e = g -> [identify_group(g.states.z, 1) identify_group(g.states.z, N_z)] .& identify_group(g.states.emp, 2)
+
+    # POLICY FUNCTIONS (by productivity group)
+    # Savings
+    tiled_plot(plot_generation_apol_by(gens, :a, :a′; crits=crit_z_u, labs=["Min z", "Max z"], cfg.lwidth), cfg, "Policy functions: savings, unemployed by age group")
+    Plots.savefig(figpath * "ss_apol_u_byage.png")
+    tiled_plot(plot_generation_apol_by(gens, :a, :a′; crits=crit_z_e, labs=["Min z", "Max z"], cfg.lwidth), cfg, "Policy functions: savings, workers by age group")
+    Plots.savefig(figpath * "ss_apol_e_byage.png")
+    # Consumption
+    tiled_plot(plot_generation_by(gens, :a, :c; crits=crit_z_u, labs=["Min z", "Max z"], cfg.lwidth), cfg, "Policy functions: consumption, unemployed by age group")
+    Plots.savefig(figpath * "ss_cpol_u_byage.png")
+    tiled_plot(plot_generation_by(gens, :a, :c; crits=crit_z_e, labs=["Min z", "Max z"], cfg.lwidth), cfg, "Policy functions: consumption, workers by age group")
+    Plots.savefig(figpath * "ss_cpol_e_byage.png")
+
+    # VALUE FUNCTION (by productivity group)
+    tiled_plot(plot_generation_by(gens, :a, :v; crits=crit_z_u, labs=["Min z", "Max z"], cfg.lwidth), cfg, "Value functions: unemployed by age group")
+    Plots.savefig(figpath * "ss_value_u_byage.png")
+    tiled_plot(plot_generation_by(gens, :a, :v; crits=crit_z_e, labs=["Min z", "Max z"], cfg.lwidth), cfg, "Value functions: workers by age group")
+    Plots.savefig(figpath * "ss_value_e_byage.png")
+
+    # WEALTH DISTRIBUTION (by productivity group)
+    tiled_plot(plot_generation_by(gens, :a, :distr; crits=crit_z_u, labs=["Min z", "Max z"], cfg.lwidth), cfg, "Asset distribution: unemployed by age group")
+    Plots.savefig(figpath * "ss_asset_distr_u_byage.png")
+    tiled_plot(plot_generation_by(gens, :a, :distr; crits=crit_z_e, labs=["Min z", "Max z"], cfg.lwidth), cfg, "Asset distribution: workers by age group")
+    Plots.savefig(figpath * "ss_asset_distr_e_byage.png")
+    mallas_a = getproperty.(getproperty.(gens,:grid_a),:nodes)
+    tiled_plot(plot_generation_distr(red_gens, mallas_a, :a; cfg.lwidth), cfg, "Asset distribution by age group")
+    Plots.savefig(figpath * "ss_asset_hist_byage.png")
+    plot_histogram_by_group(assemble(red_gens, :S, :a), assemble(red_gens, :distr), cfg, [1;2], assemble(red_gens, :states, :emp); leglabs=["unemployed", "employed"])
+    Plots.savefig(figpath * "ss_asset_hist_byemp.png")
+
+    # EULER ERRORS (by productivity group, ignore oldest generation)
+    tiled_plot( plot_generation_euler_errors_by(gens, :z, N_z;
+                                                cfg.lwidth, labs=["low z"; repeat([""], N_z-2); "high z"]),
+                cfg, "Euler errors by age group")
+    Plots.savefig(figpath * "ss_euler_err_byage_byz.png")
+    tiled_plot( plot_generation_euler_errors_by(gens, :emp, 2;
+                                                cfg.lwidth, labs=["unemployed", "employed"]),
+                cfg, "Euler errors by age group")
+    Plots.savefig(figpath * "ss_euler_err_byage_byemp.png")
+    plot_euler_errors(hh, cfg)
+    Plots.savefig(figpath * "ss_euler_err.png")
+    return nothing
+end
+export ss_graphs
 
 end

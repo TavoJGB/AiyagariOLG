@@ -8,10 +8,10 @@ end
 function identify_group(var::Vector{<:Real}, crit::Int)
     return identify_group(var, x -> x.==crit)
 end
-function identify_group(states::StateIndices, keyvar::Symbol, crit::Function)
+function identify_group(states::AbstractStateIndices, keyvar::Symbol, crit::Function)
     return crit.(getproperty(states, keyvar))
 end
-function identify_group(states::StateIndices, keyvar::Symbol, crit::Int)
+function identify_group(states::AbstractStateIndices, keyvar::Symbol, crit::Int)
     return identify_group(states, keyvar, x -> x.==crit)
 end
 function identify_group(G::PolicyFunctions, keyvar::Symbol, crit::Function)
@@ -350,25 +350,29 @@ function tiled_plot(vec_plots::Vector{Plots.Plot}, cfg::GraphConfig, tit::String
     return tiledplot
 end
 
-# Plotting a generation by groups
-function plot_generation_by(
-    g::Generation,
-    key_x::Symbol,              # x axis variable
-    key_y::Symbol;              # y axis variable
+# Basic function
+function plot_by(
+    xx::Vector{<:Real},         # x axis variable
+    yy::Vector{<:Real};         # y axis variable
     ptype=plot!,                # Plotting function
-    crits= g->[trues(size(g))], # Criteria to group agents (function or vector of functions)
+    inds=[trues(length(xx))],  # Criteria to group agents (BitVector or vector of BitVector)
     labs="",                    # Labels for each group
     lwidth::Int=1
 )
-    # Preliminaries
-    xx = getproperty(g.S, key_x)
-    yy = key_y ∈ [:v,:distr,:euler_errors] ? getproperty(g,key_y) : getproperty(g.G, key_y)
     p=plot()
     # Create plot
-    for (crit, lab) in zip(crits(g), labs)
+    for (crit, lab) in zip(eachcol(inds), labs)
         ptype(xx[crit], yy[crit], label=lab, linewidth=lwidth)
     end
     return p
+end
+
+# Plotting a generation by groups
+function plot_generation_by(g::Generation, key_x::Symbol, key_y::Symbol; crits, kwargs...)
+    # Preliminaries
+    xx = getproperty(g.S, key_x)
+    yy = key_y ∈ [:v,:distr,:euler_errors] ? getproperty(g,key_y) : getproperty(g.G, key_y)
+    return plot_by(xx, yy; inds=crits(g), kwargs...)
 end
 
 # Vector of plots by groups (one for each generation in a vector of generations)
@@ -384,7 +388,7 @@ function plot_generation_by(gens::Vector{<:Generation}, args...; kwargs...)
     return gen_plots
 end
 
-# Specific methods (savings policy function, distribution, etc.)
+# Specific methods I: savings policy function
 function plot_generation_apol_by(gens, args...; lwidth::Int=1, kwargs...)
     plots_apol = plot_generation_by(gens, args...; lwidth, kwargs...)
     for (p,g) in zip(plots_apol, gens)
@@ -394,24 +398,21 @@ function plot_generation_apol_by(gens, args...; lwidth::Int=1, kwargs...)
     end
     return plots_apol
 end
-function plot_generation_euler_errors(g::Generation, N_z::Int; lwidth::Real=1)
+
+# Specific methods II: euler errors
+function plot_generation_euler_errors_by(g::Generation, keycrit::Symbol, N_cr::Int; kwargs...)
     # Euler errors only matter for unconstrained agents with life ahead
-    crits = g -> [identify_group(g.states, :z, iz) .& .!get_borrowing_constrained(g) for iz in (1:N_z)]
-    # Labels (only for min and max z)
-    errs_labs = repeat([""], N_z)
-    errs_labs[[1,N_z]] .= ["low z", "high z"]
+    crits = g -> hcat([identify_group(g.states, keycrit, icr) .& .!get_borrowing_constrained(g) for icr in (1:N_cr)]...)
     # Plot
-    plot_generation_by(g, :a, :euler_errors; crits, labs=errs_labs, lwidth, ptype=scatter!)
+    plot_generation_by(g, :a, :euler_errors; crits, ptype=scatter!, kwargs...)
 end
-function plot_generation_euler_errors(hh::AbstractHouseholds; kwargs...)
+function plot_generation_euler_errors_by(gens::Vector{<:Generation}, args...; kwargs...)
     # Preliminaries
-    @unpack gens, process_z = hh
-    N_z = size(process_z)
     N_g = length(gens)
     gen_plots = Array{Plots.Plot}(undef, N_g-1)
     # Plot
     for (ig, g) in enumerate(gens[1:end-1])
-        gen_plots[ig] = plot_generation_euler_errors(g, N_z; kwargs...)
+        gen_plots[ig] = plot_generation_euler_errors_by(g, args...; kwargs...)
         plot!(title=get_age_range(g))
     end
     return gen_plots
@@ -435,19 +436,30 @@ function plot_euler_errors(hh::AbstractHouseholds, cfg::GraphConfig)
                 ptype=scatter!, leglabs=errs_labs, tit="Euler Errors"
             )
 end
+
+# Specific methods III: distribution
+function plot_distr(
+    xx::Vector{<:Real}, distr::Vector{<:Real}, malla_x::Vector{<:Real};
+    f_agg::Function=sum, lwidth::Int=1, sum_one::Bool=false
+)
+    # Preliminaries
+    N_x = size(malla_x,1)
+    # Aggregation
+    distr_x = [f_agg(distr[ind]) for ind in eachcol(xx .== (1:N_x)')]
+    if (sum_one) distr_x ./= sum(distr_x) end # Normalise to sum to 1
+    # Plot
+    return plot(malla_x, distr_x, label="", linewidth=lwidth)
+end
+
 function plot_generation_distr(
     g::Generation, malla_x::Vector{<:Real}, key_x::Symbol;
-    f_agg::Function=sum, lwidth::Int=1, sum_one::Bool=false
+    kwargs...
 )
     # Preliminaries
     @unpack states, distr = g
     x = getproperty(states, key_x)
-    N_x = size(malla_x,1)
-    # Aggregation
-    distr_x = [f_agg(distr[ind]) for ind in eachcol(x .== (1:N_x)')]
-    if (sum_one) distr_x ./= sum(distr_x) end # Normalise to sum to 1
     # Plot
-    return plot(malla_x, distr_x, label="", linewidth=lwidth)
+    return plot_distr(x, distr, malla_x; kwargs...)
 end
 # I could get rid of the methods below if I generalised the method "plot_generation_by"
 function plot_generation_distr(gens::Vector{<:Generation}, args...; kwargs...)
